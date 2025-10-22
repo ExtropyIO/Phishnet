@@ -5,19 +5,26 @@ Team Member: Josh (Python agents and connecting them)
 """
 
 import os
-import sys
 import uuid
 from datetime import datetime
 from typing import Dict, Any
 
-# Add project root to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from uagents import Agent, Context, Protocol, Model
-from shared.schemas.artifact_schema import (
-    Artifact, ArtifactType, AnalysisTicket, ChatMessage, ChatResponse,
-    AnalysisRequest, SignedReport, VerifiedVerdict, LogRequest, LogResponse
-)
+# Option 1: Package import (preferred)
+try:
+    from shared.schemas.artifact_schema import (
+        Artifact, ArtifactType, AnalysisTicket, ChatMessage, ChatResponse,
+        AnalysisRequest, SignedReport, VerifiedVerdict, LogRequest, LogResponse
+    )
+except ImportError:
+    # Option 2: Relative import fallback
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from shared.schemas.artifact_schema import (
+        Artifact, ArtifactType, AnalysisTicket, ChatMessage, ChatResponse,
+        AnalysisRequest, SignedReport, VerifiedVerdict, LogRequest, LogResponse
+    )
 
 # Core agent logic (framework-agnostic)
 class IntakeAgentCore:
