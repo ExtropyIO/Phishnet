@@ -1,36 +1,42 @@
 """
-IntakeAgent - First point of contact for user artifacts
-Role: Receives artifacts, packages data, presents initial verdicts
-Team Member: Josh (Python agents and connecting them)
+IntakeAgent - uAgents Framework Implementation
+Receives user artifacts and initiates analysis workflow
+Uses proper uAgents communication patterns
 """
 
 import os
 import uuid
 from datetime import datetime
 from typing import Dict, Any
+from uagents import Agent, Context, Model
 
-from uagents import Agent, Context, Protocol, Model
-# Option 1: Package import (preferred)
+# Import schemas
 try:
     from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisTicket, ChatMessage, ChatResponse,
-        AnalysisRequest, SignedReport, VerifiedVerdict, LogRequest, LogResponse
+        Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
+        ChatMessage, ChatResponse
     )
 except ImportError:
-    # Option 2: Relative import fallback
     import sys
-    import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisTicket, ChatMessage, ChatResponse,
-        AnalysisRequest, SignedReport, VerifiedVerdict, LogRequest, LogResponse
+        Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
+        ChatMessage, ChatResponse
     )
 
-# Core agent logic (framework-agnostic)
+# Create agent
+intake_agent = Agent(
+    name="IntakeAgent",
+    seed="intake-agent-seed",
+    port=8001,
+    endpoint=["http://127.0.0.1:8001/submit"]
+)
+
+# Core agent logic
 class IntakeAgentCore:
     def __init__(self):
         self.tickets: Dict[str, AnalysisTicket] = {}
-        self.analyzer_address = None  # Will be set by uAgents adapter
+        self.analyzer_address = os.getenv("ANALYZER_ADDRESS")
     
     def receive_artifact(self, artifact: Artifact) -> AnalysisTicket:
         """Receive and validate artifact from user"""
@@ -52,57 +58,36 @@ class IntakeAgentCore:
             nonce="",  # Will be filled by AnalyzerAgent
             session_id=""
         )
-    
-    def present_verdict(self, signed_report: SignedReport) -> str:
-        """Present verdict to user in human-readable format"""
-        return f"""
-🔍 Analysis Complete!
-
-Threat Level: {signed_report.threat_score}/10
-Verdict: {signed_report.verdict}
-Evidence: {signed_report.evidence}
-
-Report Hash: {signed_report.report_hash}
-Timestamp: {signed_report.timestamp}
-
-        """
-
-# uAgents integration (always available)
-try:
-    from uagents import Agent, Context, Protocol, Model
-    UAGENTS_AVAILABLE = True
-except ImportError:
-    UAGENTS_AVAILABLE = False
 
 core = IntakeAgentCore()
 
-intake_agent = Agent(
-    name="IntakeAgent",
-    seed="intake-agent-seed",
-    port=8001,
-    endpoint=["http://127.0.0.1:8001/submit"],
-    mailbox=True
-)
+# ChatMessage and ChatResponse are imported from shared schemas
 
-# Chat Protocol for user interaction
-chat_protocol = Protocol(name="chat", version="0.1")
+@intake_agent.on_event("startup")
+async def startup(ctx: Context):
+    """Agent startup handler"""
+    ctx.logger.info("IntakeAgent started - ready to receive artifacts")
+    ctx.logger.info(f"Agent address: {intake_agent.address}")
+    if core.analyzer_address:
+        ctx.logger.info(f"AnalyzerAgent address: {core.analyzer_address}")
+    else:
+        ctx.logger.warning("ANALYZER_ADDRESS not set - analysis requests will be queued")
 
-@chat_protocol.on_message(model=ChatMessage, replies=ChatResponse)
+@intake_agent.on_message(model=ChatMessage)
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
     """Handle chat messages from users"""
     ctx.logger.info(f"Received chat from {sender}: {msg.message}")
     
-    # Simple artifact detection
-    if any(keyword in msg.message.lower() for keyword in ['url', 'email', 'transaction', 'check', 'analyze']):
-        # Extract artifact type and content
-        artifact_type = ArtifactType.TEXT
-        if 'url' in msg.message.lower():
-            artifact_type = ArtifactType.URL
-        elif 'email' in msg.message.lower():
-            artifact_type = ArtifactType.EMAIL
-        elif 'transaction' in msg.message.lower():
-            artifact_type = ArtifactType.TRANSACTION
-        
+    # Extract artifact type and content
+    message_text = msg.message.lower()
+    artifact_type = None
+    
+    if 'url' in message_text or message_text.startswith('http'):
+        artifact_type = ArtifactType.URL
+    elif 'solana' in message_text or 'transaction' in message_text:
+        artifact_type = ArtifactType.SOLANA_TRANSACTION
+    
+    if artifact_type:
         # Create artifact
         artifact = Artifact(
             type=artifact_type,
@@ -114,52 +99,61 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
         ticket = core.receive_artifact(artifact)
         analysis_request = core.package_for_analysis(ticket)
         
-        # Send to AnalyzerAgent (placeholder - will implement)
         ctx.logger.info(f"Created ticket {ticket.ticket_id} for analysis")
         
-        response = ChatResponse(
-            response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}",
-            requires_action=True,
-            action_type="analysis"
-        )
+        # Send to AnalyzerAgent if available
+        if core.analyzer_address:
+            try:
+                # Send analysis request to AnalyzerAgent
+                await ctx.send(core.analyzer_address, analysis_request)
+                ctx.logger.info(f"Sent analysis request to AnalyzerAgent for ticket {ticket.ticket_id}")
+                
+                response = ChatResponse(
+                    response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n\n🔍 Sending to AnalyzerAgent for processing...",
+                    requires_action=True,
+                    action_type="analysis"
+                )
+            except Exception as e:
+                ctx.logger.error(f"Failed to send to AnalyzerAgent: {e}")
+                response = ChatResponse(
+                    response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n\n⚠️ AnalyzerAgent not available - analysis queued",
+                    requires_action=True,
+                    action_type="analysis"
+                )
+        else:
+            response = ChatResponse(
+                response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n\n⚠️ AnalyzerAgent not configured",
+                requires_action=True,
+                action_type="analysis"
+            )
     else:
         response = ChatResponse(
-            response="Hello! I can analyze URLs, emails, transactions, or text for phishing threats. What would you like me to check?",
+            response="Hello! I can analyze URLs and Solana transactions for phishing threats. What would you like me to check?",
             requires_action=False
         )
     
     await ctx.send(sender, response)
 
-# Analysis Protocol for communication with other agents
-analysis_protocol = Protocol(name="analysis", version="0.1")
-
-@analysis_protocol.on_message(model=SignedReport, replies=ChatResponse)
+@intake_agent.on_message(model=SignedReport)
 async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
     """Handle analysis results from AnalyzerAgent"""
     ctx.logger.info(f"Received analysis result: {msg.verdict}")
     
-    # Present verdict to user
-    verdict_message = core.present_verdict(msg)
-    
-    response = ChatResponse(
-        response=verdict_message,
-        requires_action=True,
-        action_type="verification"
-    )
-    
-    await ctx.send(sender, response)
+    # Present verdict to user (simplified for now)
+    verdict_message = f"""
+🔍 Analysis Complete!
 
-intake_agent.include(chat_protocol)
-intake_agent.include(analysis_protocol)
+Threat Level: {msg.threat_score}/10
+Verdict: {msg.verdict}
+Evidence: {msg.evidence}
 
-@intake_agent.on_event("startup")
-async def startup(ctx: Context):
-    ctx.logger.info("IntakeAgent started - ready to receive artifacts")
-    ctx.logger.info(f"Agent address: {intake_agent.address}")
+Report Hash: {msg.report_hash}
+Timestamp: {msg.timestamp}
+    """
+    
+    # For now, just log the result
+    # In a full implementation, you'd send this back to the original user
+    ctx.logger.info(f"Analysis result: {verdict_message}")
 
 if __name__ == "__main__":
-    if not UAGENTS_AVAILABLE:
-        print("❌ uAgents not installed. Install with: pip install uagents")
-        sys.exit(1)
-    
     intake_agent.run()

@@ -9,9 +9,25 @@ from enum import Enum
 
 class ArtifactType(str, Enum):
     URL = "url"
-    EMAIL = "email"
-    TRANSACTION = "transaction"
-    TEXT = "text"
+    SOLANA_TRANSACTION = "solana_transaction"
+
+class SolanaTransaction(BaseModel):
+    """Solana transaction details for analysis"""
+    signature: str
+    from_address: str
+    to_address: str
+    amount: float
+    token: str = "SOL"  # Default to SOL, can be SPL tokens
+    timestamp: Optional[str] = None
+    block_height: Optional[int] = None
+
+class URLDetails(BaseModel):
+    """URL details for analysis"""
+    url: str
+    domain: str
+    protocol: str = "https"
+    path: Optional[str] = None
+    query_params: Optional[Dict[str, str]] = None
 
 class Artifact(BaseModel):
     """User-submitted artifact for analysis"""
@@ -19,6 +35,10 @@ class Artifact(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = None
     user_id: Optional[str] = None
+    
+    # Specific data for each type
+    solana_tx: Optional[SolanaTransaction] = None
+    url_details: Optional[URLDetails] = None
 
 class AnalysisTicket(BaseModel):
     """Ticket created when artifact is received"""
