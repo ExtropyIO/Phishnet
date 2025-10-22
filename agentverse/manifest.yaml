@@ -1,0 +1,60 @@
+# Agentverse Manifest for PhishingHackathon Agents
+# Deploy to Agentverse for ASI Agents Track submission
+
+agents:
+  - name: "IntakeAgent"
+    description: "First point of contact for user artifacts - handles Chat Protocol"
+    endpoint: "http://127.0.0.1:8001"
+    protocols: ["chat", "analysis"]
+    capabilities:
+      - "artifact_reception"
+      - "user_interaction"
+      - "ticket_management"
+    
+  - name: "AnalyzerAgent"
+    description: "Orchestrates analysis workflow with TEE"
+    endpoint: "http://127.0.0.1:8002"
+    protocols: ["analyze", "tee_communication"]
+    capabilities:
+      - "analysis_coordination"
+      - "tee_integration"
+      - "nonce_management"
+    
+  - name: "RefereeAgent"
+    description: "Verifies TEE attestations and signatures"
+    endpoint: "http://127.0.0.1:8003"
+    protocols: ["verify", "attestation"]
+    capabilities:
+      - "attestation_verification"
+      - "signature_validation"
+      - "verdict_verification"
+    
+  - name: "OnchainAgent"
+    description: "Handles blockchain transactions for immutable logging"
+    endpoint: "http://127.0.0.1:8004"
+    protocols: ["log", "blockchain"]
+    capabilities:
+      - "blockchain_logging"
+      - "transaction_management"
+      - "explorer_links"
+
+# Deployment configuration
+deployment:
+  environment: "production"
+  region: "us-east-1"
+  scaling:
+    min_instances: 1
+    max_instances: 3
+  
+# Security settings
+security:
+  tls_enabled: true
+  authentication: "api_key"
+  rate_limiting:
+    requests_per_minute: 100
+
+# Monitoring
+monitoring:
+  health_check_interval: 30
+  log_level: "INFO"
+  metrics_enabled: true
