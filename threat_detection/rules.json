@@ -299,4 +299,142 @@
     "description": "Giveaway calls used to lure victims to malicious links",
     "severity": "medium"
   }
+  {
+    "id": "kw_login",
+    "pattern": "\\blogin\\b",
+    "description": "Generic login prompt often used in phishing URLs",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_signin",
+    "pattern": "\\bsign[-_ ]?in\\b",
+    "description": "Sign-in variant used to phish credentials",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_account",
+    "pattern": "\\baccount\\b",
+    "description": "Account references often used in phishing pages",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_verify",
+    "pattern": "\\bverify\\b",
+    "description": "Verification prompts used to trick users",
+    "severity": "high"
+  },
+  {
+    "id": "kw_secure",
+    "pattern": "\\bsecure\\b",
+    "description": "Fake secure login references used by attackers",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_update",
+    "pattern": "\\bupdate\\b",
+    "description": "Update references for phishing account takeover",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_password",
+    "pattern": "\\bpassword\\b",
+    "description": "Password-related prompts used in phishing attempts",
+    "severity": "high"
+  },
+  {
+    "id": "kw_reset",
+    "pattern": "\\breset\\b",
+    "description": "Password reset term often used in phishing attacks",
+    "severity": "high"
+  },
+  {
+    "id": "kw_confirm",
+    "pattern": "\\bconfirm\\b",
+    "description": "Confirm prompts used to trick users",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_billing",
+    "pattern": "\\bbilling\\b",
+    "description": "Billing pages used for payment credential theft",
+    "severity": "high"
+  },
+  {
+    "id": "kw_invoice",
+    "pattern": "\\binvoice\\b",
+    "description": "Invoice keyword used in fake payment/phishing pages",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_bank",
+    "pattern": "\\bbank\\b",
+    "description": "Bank references in phishing attempts",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_alert",
+    "pattern": "\\balert\\b",
+    "description": "Alert used to create urgency in phishing links",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_notice",
+    "pattern": "\\bnotice\\b",
+    "description": "Notice phrasing often used to trick users",
+    "severity": "low"
+  },
+  {
+    "id": "kw_support",
+    "pattern": "\\bsupport\\b",
+    "description": "Support references used to impersonate legitimate services",
+    "severity": "low"
+  },
+  {
+    "id": "kw_urgent",
+    "pattern": "\\burgent\\b",
+    "description": "Urgency used to compel user to act immediately",
+    "severity": "medium"
+  },
+  {
+    "id": "kw_reward",
+    "pattern": "\\breward\\b",
+    "description": "Reward wording used to entice clicks",
+    "severity": "low"
+  },
+  {
+    "id": "kw_bonus",
+    "pattern": "\\bbonus\\b",
+    "description": "Bonus offers lure used by attackers",
+    "severity": "low"
+  },
+  {
+    "id": "kw_upgrade",
+    "pattern": "\\bupgrade\\b",
+    "description": "Upgrade prompts often used in phishing pages",
+    "severity": "low"
+  },
+  {
+    "id": "kw_gift",
+    "pattern": "\\bgift\\b",
+    "description": "Gift lure often used in scams",
+    "severity": "low"
+  },
+  {
+    "id": "kw_redeem",
+    "pattern": "\\bredeem\\b",
+    "description": "Redeem call used to lure clicks",
+    "severity": "low"
+  },
+  {
+    "id": "kw_temporary",
+    "pattern": "\\btemporary\\b",
+    "description": "Temporary access or account wording often used in phishing",
+    "severity": "low"
+  },
+  {
+    "id": "kw_notification",
+    "pattern": "\\bnotification\\b",
+    "description": "Notification used to create a false sense of urgency",
+    "severity": "low"
+  }
 ]
