@@ -17,7 +17,7 @@ threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abs
 sys.path.append(os.path.join(threat_detection_path, 'models'))
 
 # Import URL analyzer (now uses absolute paths internally)
-from url_analyzer import analyze_url
+from url_analyzer import URLAnalyzer
 
 # Import schemas
 try:
@@ -44,12 +44,14 @@ class AnalyzerAgentCore:
     def __init__(self):
         self.go_service_url = os.getenv("GO_ANALYZER_URL", "http://localhost:8080")
         self.timeout = 30  # seconds
+        # Initialize URL analyzer instance
+        self.url_analyzer = URLAnalyzer()
     
     def analyze_url_direct(self, url: str) -> Dict[str, Any]:
         """Call URL analyzer directly - no additional processing"""
         try:
             # Call the URL analyzer directly and return its result
-            analysis_result = analyze_url(url)
+            analysis_result = self.url_analyzer.analyze_url(url)
             
             # Pass through ONLY what the URL analyzer provides - no artificial conversions
             return {

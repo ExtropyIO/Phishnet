@@ -12,7 +12,7 @@ from uagents import Agent, Context, Model
 try:
     from shared.schemas.artifact_schema import ChatMessage, ChatResponse
 except ImportError:
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from shared.schemas.artifact_schema import ChatMessage, ChatResponse
 
 # Create test client

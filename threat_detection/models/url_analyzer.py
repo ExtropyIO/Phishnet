@@ -4,7 +4,12 @@ from urllib.parse import urlparse, parse_qs
 import idna
 
 class URLAnalyzer:
-    def __init__(self, rules_path="rules.json"):
+    def __init__(self, rules_path=None):
+        # Use absolute path for rules.json if not specified
+        if rules_path is None:
+            import os
+            rules_path = os.path.join(os.path.dirname(__file__), "..", "rules.json")
+        
         with open(rules_path, "r") as f:
             self.rules = json.load(f)
 
