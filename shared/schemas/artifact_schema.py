@@ -70,8 +70,8 @@ class SignedReport(BaseModel):
     report_hash: str
     attestation: str
     signature: str
-    threat_score: float
     verdict: str
+    severity: str  # Use severity from URL analyzer instead of artificial threat_score
     evidence: Dict[str, Any]
     timestamp: str
 

@@ -143,7 +143,7 @@ async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
     verdict_message = f"""
 🔍 Analysis Complete!
 
-Threat Level: {msg.threat_score}/10
+Severity: {msg.severity.upper()}
 Verdict: {msg.verdict}
 Evidence: {msg.evidence}
 

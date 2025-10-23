@@ -3,8 +3,10 @@ import re
 from urllib.parse import urlparse, parse_qs
 import idna
 
-# Load rules.json
-with open("rules.json", "r") as f:
+# Load rules.json using absolute path
+import os
+rules_path = os.path.join(os.path.dirname(__file__), "..", "rules.json")
+with open(rules_path, "r") as f:
     rules = json.load(f)
 
 # List of suspicious TLDs

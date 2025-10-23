@@ -7,9 +7,17 @@ Uses proper uAgents communication patterns
 import os
 import uuid
 import aiohttp
+import sys
 from datetime import datetime
 from typing import Dict, Any
 from uagents import Agent, Context, Model
+
+# Add threat detection to path
+threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
+sys.path.append(os.path.join(threat_detection_path, 'models'))
+
+# Import URL analyzer (now uses absolute paths internally)
+from url_analyzer import analyze_url
 
 # Import schemas
 try:
@@ -31,107 +39,78 @@ analyzer_agent = Agent(
     endpoint=["http://127.0.0.1:8002/submit"]
 )
 
-# Go service communication logic
+# Threat detection analysis logic
 class AnalyzerAgentCore:
     def __init__(self):
         self.go_service_url = os.getenv("GO_ANALYZER_URL", "http://localhost:8080")
         self.timeout = 30  # seconds
     
-    async def call_go_service(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Call Go service /analyze endpoint"""
+    def analyze_url_direct(self, url: str) -> Dict[str, Any]:
+        """Call URL analyzer directly - no additional processing"""
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.go_service_url}/analyze",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout)
-                ) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        error_text = await response.text()
-                        return {
-                            "error": f"Go service error: {response.status}",
-                            "details": error_text
-                        }
-        except aiohttp.ClientError as e:
+            # Call the URL analyzer directly and return its result
+            analysis_result = analyze_url(url)
+            
+            # Pass through ONLY what the URL analyzer provides - no artificial conversions
             return {
-                "error": f"Failed to connect to Go service: {str(e)}",
-                "fallback": True
+                "verdict": analysis_result.get("verdict", "safe"),
+                "severity": analysis_result.get("severity", "low"),
+                "evidence": analysis_result,
+                "report_hash": f"analysis_{uuid.uuid4().hex[:16]}",
+                "attestation": "url_analyzer",
+                "signature": f"analyzer_sig_{uuid.uuid4().hex[:8]}"
             }
         except Exception as e:
-            return {
-                "error": f"Unexpected error: {str(e)}",
-                "fallback": True
-            }
+            raise Exception(f"URL analyzer failed: {str(e)}")
     
     async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
-        """Call Go service to analyze request with full context"""
-        # Prepare payload with session context for Go service
-        payload = {
-            "ticket_id": req.ticket_id,
-            "nonce": req.nonce,
-            "session_id": req.session_id,
-            "artifact": {
-                "type": req.artifact.type.value,
-                "content": req.artifact.content,
-                "metadata": req.artifact.metadata or {}
-            }
-        }
-        
-        # Call Go service
-        go_result = await self.call_go_service(payload)
-        
-        # Process Go service response
-        if "error" in go_result:
-            # Go service returned an error
+        """Pass request to URL analyzer - no additional processing"""
+        try:
+            # Extract URL from content
+            url_content = req.artifact.content
+            import re
+            url_match = re.search(r'https?://[^\s]+', url_content)
+            if url_match:
+                url_to_analyze = url_match.group(0)
+            else:
+                url_to_analyze = url_content
+            
+            # Call URL analyzer directly
+            analysis_result = self.analyze_url_direct(url_to_analyze)
+            
+            # Create SignedReport from URL analyzer result
             return SignedReport(
-                report_hash=f"error_{uuid.uuid4().hex[:16]}",
-                attestation="go_service_error",
-                signature="",
-                threat_score=0.0,
-                verdict=f"ERROR: {go_result['error']}",
-                evidence=go_result,
+                report_hash=analysis_result.get("report_hash", f"analysis_{uuid.uuid4().hex[:16]}"),
+                attestation=analysis_result.get("attestation", "url_analyzer"),
+                signature=analysis_result.get("signature", ""),
+                verdict=analysis_result.get("verdict", "UNKNOWN"),
+                severity=analysis_result.get("severity", "low"),
+                evidence=analysis_result.get("evidence", {}),
                 timestamp=datetime.now().isoformat()
             )
-        
-        # Extract results from Go service response
-        threat_score = go_result.get("threat_score", 0.0)
-        verdict = go_result.get("verdict", "UNKNOWN")
-        evidence = go_result.get("evidence", {})
-        report_hash = go_result.get("report_hash", f"go_{uuid.uuid4().hex[:16]}")
-        attestation = go_result.get("attestation", "go_service")
-        signature = go_result.get("signature", "")
-        
-        return SignedReport(
-            report_hash=report_hash,
-            attestation=attestation,
-            signature=signature,
-            threat_score=threat_score,
-            verdict=verdict,
-            evidence=evidence,
-            timestamp=datetime.now().isoformat()
-        )
+            
+        except Exception as e:
+            # Return simple error
+            raise Exception(f"Analysis failed: {str(e)}")
 
 core = AnalyzerAgentCore()
 
 @analyzer_agent.on_event("startup")
 async def startup(ctx: Context):
     """Agent startup handler"""
-    ctx.logger.info("AnalyzerAgent started - ready to call Go service for analysis")
+    ctx.logger.info("AnalyzerAgent started - pass-through to URL analyzer")
     ctx.logger.info(f"Agent address: {analyzer_agent.address}")
-    ctx.logger.info(f"Go service URL: {core.go_service_url}")
 
 @analyzer_agent.on_message(model=AnalysisRequest)
 async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
     """Handle analysis requests from IntakeAgent"""
     ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
     
-    # Call Go service for analysis
-    ctx.logger.info(f"Calling Go service for analysis of {msg.artifact.type}")
+    # Pass to URL analyzer
+    ctx.logger.info(f"Passing {msg.artifact.type} to url_analyzer.py")
     signed_report = await core.analyze_request(msg)
     
-    ctx.logger.info(f"Analysis complete: {signed_report.verdict} (Score: {signed_report.threat_score})")
+    ctx.logger.info(f"URL analyzer result: {signed_report.verdict}")
     ctx.logger.info(f"Attestation: {signed_report.attestation}")
     
     # Send result back to IntakeAgent

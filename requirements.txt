@@ -1,5 +1,5 @@
 # PhishingHackathon Agent Dependencies
-# Core agent framework (currently used by IntakeAgent)
+# Core agent framework
 uagents>=0.22.10
 pydantic>=2.12.0
 
