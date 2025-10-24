@@ -1,12 +1,11 @@
 """
 AnalyzerAgent - uAgents Framework Implementation
 Calls Go service for TEE analysis and returns signed reports
-Uses proper uAgents communication patterns
+Integrated with MeTTa Knowledge Graph for URL threat logging
 """
 
 import os
 import uuid
-import aiohttp
 import sys
 from datetime import datetime
 from typing import Dict, Any
@@ -16,8 +15,12 @@ from uagents import Agent, Context, Model
 threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
 sys.path.append(os.path.join(threat_detection_path, 'models'))
 
-# Import URL analyzer (now uses absolute paths internally)
+# Import URL analyzer
 from url_analyzer import URLAnalyzer
+
+# Import MeTTa KG client
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from metta_kg_client import MeTTaKGClient
 
 # Import schemas
 try:
@@ -39,83 +42,60 @@ analyzer_agent = Agent(
     endpoint=["http://127.0.0.1:8002/submit"]
 )
 
-# Threat detection analysis logic
+# Core agent logic
 class AnalyzerAgentCore:
     def __init__(self):
-        self.go_service_url = os.getenv("GO_ANALYZER_URL", "http://localhost:8080")
-        self.timeout = 30  # seconds
-        # Initialize URL analyzer instance
         self.url_analyzer = URLAnalyzer()
-    
-    def analyze_url_direct(self, url: str) -> Dict[str, Any]:
-        """Call URL analyzer directly - no additional processing"""
-        try:
-            # Call the URL analyzer directly and return its result
-            analysis_result = self.url_analyzer.analyze_url(url)
-            
-            # Pass through ONLY what the URL analyzer provides - no artificial conversions
-            return {
-                "verdict": analysis_result.get("verdict", "safe"),
-                "severity": analysis_result.get("severity", "low"),
-                "evidence": analysis_result,
-                "report_hash": f"analysis_{uuid.uuid4().hex[:16]}",
-                "attestation": "url_analyzer",
-                "signature": f"analyzer_sig_{uuid.uuid4().hex[:8]}"
-            }
-        except Exception as e:
-            raise Exception(f"URL analyzer failed: {str(e)}")
-    
+        self.kg_client = MeTTaKGClient()
+
     async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
-        """Pass request to URL analyzer - no additional processing"""
+        """Analyze a URL artifact and store result in MeTTa KG"""
         try:
-            # Extract URL from content
             url_content = req.artifact.content
             import re
             url_match = re.search(r'https?://[^\s]+', url_content)
-            if url_match:
-                url_to_analyze = url_match.group(0)
-            else:
-                url_to_analyze = url_content
-            
-            # Call URL analyzer directly
-            analysis_result = self.analyze_url_direct(url_to_analyze)
-            
-            # Create SignedReport from URL analyzer result
+            url_to_analyze = url_match.group(0) if url_match else url_content
+
+            # Analyze URL
+            analysis_result = self.url_analyzer.analyze_url(url_to_analyze)
+
+            # Add to KG
+            self.kg_client.add_fact(
+                fact_type="url_analysis",
+                fact_value=url_to_analyze,
+                metadata={
+                    "severity": analysis_result.get("severity"),
+                    "verdict": analysis_result.get("verdict"),
+                    "alerts": analysis_result.get("alerts")
+                }
+            )
+
+            # Return signed report
             return SignedReport(
-                report_hash=analysis_result.get("report_hash", f"analysis_{uuid.uuid4().hex[:16]}"),
-                attestation=analysis_result.get("attestation", "url_analyzer"),
-                signature=analysis_result.get("signature", ""),
+                report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
+                attestation="url_analyzer",
+                signature=f"analyzer_sig_{uuid.uuid4().hex[:8]}",
                 verdict=analysis_result.get("verdict", "UNKNOWN"),
                 severity=analysis_result.get("severity", "low"),
-                evidence=analysis_result.get("evidence", {}),
+                evidence=analysis_result,
                 timestamp=datetime.now().isoformat()
             )
-            
+
         except Exception as e:
-            # Return simple error
             raise Exception(f"Analysis failed: {str(e)}")
 
 core = AnalyzerAgentCore()
 
 @analyzer_agent.on_event("startup")
 async def startup(ctx: Context):
-    """Agent startup handler"""
-    ctx.logger.info("AnalyzerAgent started - pass-through to URL analyzer")
+    ctx.logger.info("AnalyzerAgent started - MeTTa KG enabled")
     ctx.logger.info(f"Agent address: {analyzer_agent.address}")
 
 @analyzer_agent.on_message(model=AnalysisRequest)
 async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
-    """Handle analysis requests from IntakeAgent"""
     ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
-    
-    # Pass to URL analyzer
-    ctx.logger.info(f"Passing {msg.artifact.type} to url_analyzer.py")
     signed_report = await core.analyze_request(msg)
-    
     ctx.logger.info(f"URL analyzer result: {signed_report.verdict}")
-    ctx.logger.info(f"Attestation: {signed_report.attestation}")
-    
-    # Send result back to IntakeAgent
     await ctx.send(sender, signed_report)
 
 if __name__ == "__main__":
