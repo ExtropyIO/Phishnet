@@ -47,26 +47,8 @@ class AnalyzerAgentCore:
         # Initialize URL analyzer instance
         self.url_analyzer = URLAnalyzer()
     
-    def analyze_url_direct(self, url: str) -> Dict[str, Any]:
-        """Call URL analyzer directly - no additional processing"""
-        try:
-            # Call the URL analyzer directly and return its result
-            analysis_result = self.url_analyzer.analyze_url(url)
-            
-            # Pass through ONLY what the URL analyzer provides - no artificial conversions
-            return {
-                "verdict": analysis_result.get("verdict", "safe"),
-                "severity": analysis_result.get("severity", "low"),
-                "evidence": analysis_result,
-                "report_hash": f"analysis_{uuid.uuid4().hex[:16]}",
-                "attestation": "url_analyzer",
-                "signature": f"analyzer_sig_{uuid.uuid4().hex[:8]}"
-            }
-        except Exception as e:
-            raise Exception(f"URL analyzer failed: {str(e)}")
-    
     async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
-        """Pass request to URL analyzer - no additional processing"""
+        """Pass request directly to URL analyzer"""
         try:
             # Extract URL from content
             url_content = req.artifact.content
@@ -77,17 +59,17 @@ class AnalyzerAgentCore:
             else:
                 url_to_analyze = url_content
             
-            # Call URL analyzer directly
-            analysis_result = self.analyze_url_direct(url_to_analyze)
+            # Call URL analyzer directly - no intermediate function needed
+            analysis_result = self.url_analyzer.analyze_url(url_to_analyze)
             
-            # Create SignedReport from URL analyzer result
+            # Create SignedReport directly from URL analyzer result
             return SignedReport(
-                report_hash=analysis_result.get("report_hash", f"analysis_{uuid.uuid4().hex[:16]}"),
-                attestation=analysis_result.get("attestation", "url_analyzer"),
-                signature=analysis_result.get("signature", ""),
+                report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
+                attestation="url_analyzer",
+                signature=f"analyzer_sig_{uuid.uuid4().hex[:8]}",
                 verdict=analysis_result.get("verdict", "UNKNOWN"),
                 severity=analysis_result.get("severity", "low"),
-                evidence=analysis_result.get("evidence", {}),
+                evidence=analysis_result,
                 timestamp=datetime.now().isoformat()
             )
             

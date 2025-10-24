@@ -151,7 +151,6 @@ Report Hash: {msg.report_hash}
 Timestamp: {msg.timestamp}
     """
     
-    # For now, just log the result
     # In a full implementation, you'd send this back to the original user
     ctx.logger.info(f"Analysis result: {verdict_message}")
 

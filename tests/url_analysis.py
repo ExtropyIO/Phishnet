@@ -56,8 +56,4 @@ async def handle_response(ctx: Context, sender: str, msg: ChatResponse):
         ctx.logger.info(f"   Action type: {msg.action_type}")
 
 if __name__ == "__main__":
-    print("🧪 URL Analysis Pipeline Test")
-    print("=" * 50)
-    print("Testing complete flow with local threat detection...")
-    print("=" * 50)
     test_client.run()
