@@ -5,6 +5,8 @@ Respects environment variables for configuration
 """
 
 import os
+import json
+import threading
 from datetime import datetime
 from typing import Dict, Any
 
@@ -15,10 +17,25 @@ METTA_LOGGING = os.getenv("METTA_LOGGING", "true").lower() == "true"
 METTA_DEBUG = os.getenv("METTA_DEBUG", "false").lower() == "true"
 METTA_PERSISTENCE = os.getenv("METTA_PERSISTENCE", "false").lower() == "true"
 
+import json
+import threading
+
 class MeTTaKGClient:
     def __init__(self):
         self.graph_path = METTA_GRAPH_PATH
-        self.kg_data = {}  # simple in-memory storage for demonstration
+        self.kg_data = {}
+        self.lock = threading.Lock()  # concurrency lock
+
+        # Load persisted KG if it exists
+        if os.path.exists(self.graph_path):
+            try:
+                with open(self.graph_path, "r") as f:
+                    self.kg_data = json.load(f)
+                if METTA_LOGGING:
+                    print(f"[MeTTaKG] Loaded {len(self.kg_data)} facts from {self.graph_path}")
+            except Exception as e:
+                print(f"[MeTTaKG ERROR] Failed to load KG: {e}")
+
         if USE_METTA_KG:
             print(f"[MeTTaKG] Knowledge Graph enabled at {self.graph_path}")
         else:
