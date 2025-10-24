@@ -17,8 +17,14 @@ threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abs
 sys.path.append(os.path.join(threat_detection_path, 'models'))
 
 # Import URL analyzer (now uses absolute paths internally)
-from url_analyzer import URLAnalyzer
+from threat_detection.models.url_analyzer import URLAnalyzer
+from datetime import datetime
+from shared.health import start_health_server
 
+start_health_server()
+from shared.health import start_health_server
+
+start_health_server()
 # Import schemas
 try:
     from shared.schemas.artifact_schema import (
