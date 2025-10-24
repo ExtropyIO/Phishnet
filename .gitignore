@@ -42,6 +42,7 @@ venv.bak/
 .env.development.local
 .env.test.local
 .env.production.local
+AccessKeys.csv
 
 # IDE
 .vscode/
@@ -118,3 +119,5 @@ dmypy.json
 *.temp
 test_*.py
 temp_*.py
+infra/cdk.out
+infra/node_modules
