@@ -74,6 +74,7 @@ class SignedReport(BaseModel):
     severity: str  # Use severity from URL analyzer instead of artificial threat_score
     evidence: Dict[str, Any]
     timestamp: str
+    ticket_id: Optional[str] = None  # Track back to original request
 
 class VerifyRequest(BaseModel):
     """Request to verify TEE attestation"""
@@ -111,3 +112,40 @@ class ChatResponse(BaseModel):
     response: str
     requires_action: bool = False
     action_type: Optional[str] = None
+
+# HTTP Request/Response Models for REST API
+class AnalyzeRequestModel(BaseModel):
+    """HTTP request model for artifact analysis"""
+    content: str
+    type: str = "URL"
+    user_id: str = "unknown"
+
+class AnalyzeResponseModel(BaseModel):
+    """HTTP response model for analysis requests"""
+    ticket_id: str
+    status: str
+    message: str
+    verdict: str = ""
+    severity: str = ""
+    report_hash: str = ""
+    timestamp: str = ""
+    evidence: str = ""
+    attestation: str = ""
+    signature: str = ""
+
+class StatusResponseModel(BaseModel):
+    """HTTP response model for status checks"""
+    ticket_id: str
+    status: str
+    verdict: str = ""
+    severity: str = ""
+    report_hash: str = ""
+    timestamp: str = ""
+    evidence: str = ""
+    attestation: str = ""
+    signature: str = ""
+
+class HealthResponseModel(BaseModel):
+    """HTTP response model for health checks"""
+    status: str
+    agent: str
