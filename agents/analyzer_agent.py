@@ -10,7 +10,7 @@ import aiohttp
 import sys
 from datetime import datetime
 from typing import Dict, Any
-from uagents import Agent, Context, Model
+from uagents import Agent, Context, Protocol, Model
 
 # Add threat detection to path
 threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
@@ -20,6 +20,7 @@ sys.path.append(os.path.join(threat_detection_path, 'models'))
 from threat_detection.models.url_analyzer import URLAnalyzer
 from datetime import datetime
 from shared.health import start_health_server
+from url_analyzer import URLAnalyzer
 
 start_health_server()
 from shared.health import start_health_server
@@ -37,38 +38,31 @@ except ImportError:
         Artifact, ArtifactType, AnalysisRequest, SignedReport
     )
 
-# Create agent
+# Define the analysis protocol for AnalyzerAgent
+analysis_protocol = Protocol(name="AnalysisProtocol", version="1.0.0")
+
 analyzer_agent = Agent(
     name="AnalyzerAgent",
     seed="analyzer-agent-seed",
-    port=8002,
-    endpoint=["http://127.0.0.1:8002/submit"]
+    port=8002
 )
 
-# Threat detection analysis logic
 class AnalyzerAgentCore:
     def __init__(self):
-        self.go_service_url = os.getenv("GO_ANALYZER_URL", "http://localhost:8080")
-        self.timeout = 30  # seconds
-        # Initialize URL analyzer instance
+        # Current: Direct URL analyzer
         self.url_analyzer = URLAnalyzer()
+        
+        # Future: TEE service communication
+        self.tee_service_url = os.getenv("TEE_SERVICE_URL", "http://localhost:8080")
+        self.timeout = 30  # seconds
     
     async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
-        """Pass request directly to URL analyzer"""
+        """Analyze request - currently uses URL analyzer, future will use TEE"""
         try:
-            # Extract URL from content
-            url_content = req.artifact.content
-            import re
-            url_match = re.search(r'https?://[^\s]+', url_content)
-            if url_match:
-                url_to_analyze = url_match.group(0)
-            else:
-                url_to_analyze = url_content
+            # Current implementation: Direct URL analyzer
+            analysis_result = self.url_analyzer.analyze_url(req.artifact.content)
             
-            # Call URL analyzer directly - no intermediate function needed
-            analysis_result = self.url_analyzer.analyze_url(url_to_analyze)
-            
-            # Create SignedReport directly from URL analyzer result
+            # Create SignedReport from URL analyzer result
             return SignedReport(
                 report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
                 attestation="url_analyzer",
@@ -76,12 +70,21 @@ class AnalyzerAgentCore:
                 verdict=analysis_result.get("verdict", "UNKNOWN"),
                 severity=analysis_result.get("severity", "low"),
                 evidence=analysis_result,
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
+                ticket_id=req.ticket_id
             )
             
         except Exception as e:
-            # Return simple error
             raise Exception(f"Analysis failed: {str(e)}")
+    
+    async def analyze_request_tee(self, req: AnalysisRequest) -> SignedReport:
+        """Future: Analyze request via TEE service over HTTP"""
+        # TODO: Implement TEE communication
+        # async with aiohttp.ClientSession() as session:
+        #     async with session.post(f"{self.tee_service_url}/analyze", json=req.dict()) as response:
+        #         tee_result = await response.json()
+        #         return SignedReport(**tee_result)
+        pass
 
 core = AnalyzerAgentCore()
 
@@ -91,7 +94,7 @@ async def startup(ctx: Context):
     ctx.logger.info("AnalyzerAgent started - pass-through to URL analyzer")
     ctx.logger.info(f"Agent address: {analyzer_agent.address}")
 
-@analyzer_agent.on_message(model=AnalysisRequest)
+@analysis_protocol.on_message(model=AnalysisRequest)
 async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
     """Handle analysis requests from IntakeAgent"""
     ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
@@ -107,4 +110,5 @@ async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisReques
     await ctx.send(sender, signed_report)
 
 if __name__ == "__main__":
+    analyzer_agent.include(analysis_protocol, publish_manifest=True)
     analyzer_agent.run()
