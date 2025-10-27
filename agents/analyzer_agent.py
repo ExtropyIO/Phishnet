@@ -10,7 +10,7 @@ import aiohttp
 import sys
 from datetime import datetime
 from typing import Dict, Any
-from uagents import Agent, Context
+from uagents import Agent, Context, Protocol, Model
 
 # Add threat detection to path
 threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
@@ -28,6 +28,9 @@ except ImportError:
     from shared.schemas.artifact_schema import (
         Artifact, ArtifactType, AnalysisRequest, SignedReport
     )
+
+# Define the analysis protocol for AnalyzerAgent
+analysis_protocol = Protocol(name="AnalysisProtocol", version="1.0.0")
 
 analyzer_agent = Agent(
     name="AnalyzerAgent",
@@ -82,7 +85,7 @@ async def startup(ctx: Context):
     ctx.logger.info("AnalyzerAgent started - pass-through to URL analyzer")
     ctx.logger.info(f"Agent address: {analyzer_agent.address}")
 
-@analyzer_agent.on_message(model=AnalysisRequest)
+@analysis_protocol.on_message(model=AnalysisRequest)
 async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
     """Handle analysis requests from IntakeAgent"""
     ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
@@ -98,4 +101,5 @@ async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisReques
     await ctx.send(sender, signed_report)
 
 if __name__ == "__main__":
+    analyzer_agent.include(analysis_protocol, publish_manifest=True)
     analyzer_agent.run()

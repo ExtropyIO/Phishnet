@@ -8,7 +8,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import Dict, Any
-from uagents import Agent, Context
+from uagents import Agent, Context, Protocol, Model
 
 try:
     from shared.schemas.artifact_schema import (
@@ -22,6 +22,9 @@ except ImportError:
         Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
         ChatMessage, ChatResponse
     )
+
+# Define the chat protocol for IntakeAgent
+chat_protocol = Protocol(name="PhishingAnalysisProtocol", version="1.0.0")
 
 intake_agent = Agent(
     name="IntakeAgent",
@@ -73,7 +76,7 @@ async def startup(ctx: Context):
         ctx.logger.warning("ANALYZER_ADDRESS not set - analysis requests will be queued")
 
 
-@intake_agent.on_message(model=ChatMessage)
+@chat_protocol.on_message(model=ChatMessage)
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
     """Handle chat messages from users"""
     ctx.logger.info(f"Received chat from {sender}: {msg.message}")
@@ -120,7 +123,7 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
     )
     await ctx.send(sender, response)
 
-@intake_agent.on_message(model=SignedReport)
+@chat_protocol.on_message(model=SignedReport)
 async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
     """Handle analysis results from AnalyzerAgent"""
     ctx.logger.info(f"Received analysis result: {msg.verdict}")
@@ -172,4 +175,5 @@ async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
         ctx.logger.warning("Could not find original sender for analysis result")
 
 if __name__ == "__main__":
+    intake_agent.include(chat_protocol, publish_manifest=True)
     intake_agent.run()
