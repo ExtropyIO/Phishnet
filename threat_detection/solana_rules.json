@@ -1,1 +1,38 @@
 
+[
+  {
+    "id": "malicious_dev_wallet_1",
+    "address": "5Jfb3n8eW4JyQrKJktMNBFXnC1zx2YHjRSkzRrTT5QHh",
+    "type": "wallet",
+    "description": "Malicious developer wallet detected in previous incidents",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_dev_wallet_2",
+    "address": "ESSfP3aAcW6Z59ozut9Jkqy9btaX5YTHt25b3Vhs2hsf",
+    "type": "wallet",
+    "description": "Malicious developer wallet #2",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_dev_wallet_3",
+    "address": "GrXoxqM2a6QFKSBdZ9RLWJCBVTFvuuH8eCjjsLbjhpiR",
+    "type": "wallet",
+    "description": "Malicious developer wallet #3",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_validator_1",
+    "address": "4SKy65C9373k9WZnq2ViR7nq8eCu32TkLhoXq45MYQm6",
+    "type": "validator",
+    "description": "Malicious validator (known bad node)",
+    "severity": "high"
+  },
+  {
+    "id": "malicious_validator_2",
+    "address": "7Q79sw9Sb625PFzxTvRzhgYme8Jb6mzuTR1CaU3UfV1w",
+    "type": "validator",
+    "description": "Malicious validator (known bad node) #2",
+    "severity": "high"
+  }
+]
