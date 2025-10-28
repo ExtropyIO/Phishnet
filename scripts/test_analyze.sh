@@ -9,4 +9,4 @@ curl -sS -X POST "http://$ALB_DNS/intake/analyze" \
         "artifact_type": "url",
         "artifact_value": "https://example.bad/phish",
         "metadata": {"source":"script-test","tags":["demo"]}
-      }' | jq .
+      }' | jq . || true
