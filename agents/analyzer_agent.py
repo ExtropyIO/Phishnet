@@ -4,20 +4,33 @@ Publishes public endpoint via shared bootstrap and exposes /analyzer/health on :
 """
 
 import os
-import hashlib
-from datetime import datetime
+import uuid
+import sys
+from typing import Dict, Any
+from uagents import Agent, Context, Protocol, Model
+from uagents.protocols.query import QueryProtocol
 
 from uagents import Agent, Context
 
-from shared.agent_bootstrap import build_agent, start_sidecars, run_agent
+# Import analyzers
+# Import URL analyzer (now uses absolute paths internally)
+from datetime import datetime
+from shared.health import start_health_server
+from url_analyzer import URLAnalyzer
+from solana_analyzer import SolanaAnalyzer
 
+# Import MeTTa KG client
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from metta_kg_client import MeTTaKGClient
+
+start_health_server()
+# Import schemas
 try:
     from shared.schemas.artifact_schema import (
         AnalysisRequest, SignedReport, ChatMessage, ChatResponse
     )
 except ImportError:
-    import sys, pathlib
-    sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from shared.schemas.artifact_schema import (
         AnalysisRequest, SignedReport, ChatMessage, ChatResponse
     )
@@ -26,27 +39,101 @@ agent: Agent = build_agent("AnalyzerAgent")
 start_sidecars()
 
 
-def _score(artifact_content: str) -> float:
-    """Very naive, deterministic stub scoring (replace with real pipeline)."""
-    lower = (artifact_content or "").lower()
-    s = 0.0
-    if "http" in lower: s += 0.2
-    if "login" in lower or "wallet" in lower: s += 0.4
-    if "bonus" in lower or "airdrop" in lower: s += 0.4
-    return min(1.0, s)
+analyzer_agent = Agent(
+    name="AnalyzerAgent",
+    seed="analyzer-agent-seed",
+    port=8002,
+    protocols=[query_protocol],
+    mailbox=True,
+    endpoint="http://TeeAge-Alb16-asYi7vJYnLGj-755747286.eu-west-1.elb.amazonaws.com/analyzer/"
+)
 
-def _verdict(score: float) -> str:
-    if score >= 0.8: return "malicious"
-    if score >= 0.5: return "suspicious"
-    return "benign"
+# Core agent logic
+class AnalyzerAgentCore:
+    def __init__(self):
+        self.url_analyzer = URLAnalyzer()
+        self.solana_analyzer = SolanaAnalyzer()
+        self.kg_client = MeTTaKGClient()
+        # Future:
+        self.tee_service_url = os.getenv("TEE_SERVICE_URL", "http://localhost:8080")
+        self.timeout = 30
+
+    async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
+        """Analyze a URL or Solana artifact and store result in MeTTa KG"""
+        try:
+            artifact = req.artifact
+            result = {}
+            
+            if artifact.type == ArtifactType.URL:
+                import re
+                url_match = re.search(r'https?://[^\s]+', artifact.content)
+                url_to_analyze = url_match.group(0) if url_match else artifact.content
+                result = self.url_analyzer.analyze_url(url_to_analyze)
+                fact_type = "url_analysis"
+                fact_value = url_to_analyze
+
+            elif artifact.type == ArtifactType.SOLANA_TRANSACTION:
+                if not artifact.solana_tx:
+                    raise Exception("Missing Solana transaction data")
+                result = self.solana_analyzer.analyze_transaction(artifact.solana_tx)
+                fact_type = "solana_tx_analysis"
+                fact_value = artifact.solana_tx.dict()
+
+            else:
+                raise Exception(f"Unsupported artifact type: {artifact.type}")
+
+            # Add to KG
+            self.kg_client.add_fact(
+                fact_type=fact_type,
+                fact_value=fact_value,
+                metadata={
+                    "severity": result.get("severity"),
+                    "verdict": result.get("verdict"),
+                    "alerts": result.get("alerts")
+                }
+            )
+
+            # Return signed report
+            return SignedReport(
+                report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
+                attestation="analyzer_agent",
+                signature=f"analyzer_sig_{uuid.uuid4().hex[:8]}",
+                verdict=result.get("verdict", "UNKNOWN"),
+                severity=result.get("severity", "low"),
+                evidence=result,
+                timestamp=datetime.now().isoformat(),
+                ticket_id=req.ticket_id
+            )
+
+        except Exception as e:
+            raise Exception(f"Analysis failed: {str(e)}")
+    
+    # async def analyze_request_tee(self, req: AnalysisRequest) -> SignedReport:
+    #     """Future: Analyze request via TEE service over HTTP"""
+    #     # TODO: Implement TEE communication
+    #     # async with aiohttp.ClientSession() as session:
+    #     #     async with session.post(f"{self.tee_service_url}/analyze", json=req.dict()) as response:
+    #     #         tee_result = await response.json()
+    #     #         return SignedReport(**tee_result)
+    #     pass
 
 
 @agent.on_event("startup")
 async def startup(ctx: Context):
-    ctx.logger.info("AnalyzerAgent ready")
-    pb = os.getenv("PUBLIC_BASE_URL")
-    ctx.logger.info(f"Public endpoint: {pb.rstrip('/')+'/submit' if pb else '(unset)'}")
+    ctx.logger.info("AnalyzerAgent started - MeTTa KG enabled")
+    ctx.logger.info(f"Agent address: {analyzer_agent.address}")
 
+@analysis_protocol.on_message(AnalysisRequest, replies=SignedReport)
+async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
+    ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
+    ctx.logger.info(f"Passing {msg.artifact.type} to Analyzer")
+
+    signed_report = await core.analyze_request(msg)
+    
+    ctx.logger.info(f"Analysis result: {signed_report.verdict}")
+    ctx.logger.info(f"Attestation: {signed_report.attestation}")
+    
+    await ctx.send(sender, signed_report)
 
 @agent.on_message(model=AnalysisRequest)
 async def handle_analysis(ctx: Context, sender: str, msg: AnalysisRequest):
@@ -54,39 +141,6 @@ async def handle_analysis(ctx: Context, sender: str, msg: AnalysisRequest):
     score = _score(content)
     verdict = _verdict(score)
 
-    evidence = {
-        "signals": {
-            "has_http": "http" in content.lower(),
-            "has_login_or_wallet": any(k in content.lower() for k in ["login", "wallet"]),
-            "has_incentive_bait": any(k in content.lower() for k in ["bonus", "airdrop"]),
-        },
-        "score": score,
-    }
-
-    raw = f"{msg.ticket_id}|{content}|{score}|{verdict}|{datetime.utcnow().isoformat()}"
-    report_hash = hashlib.sha256(raw.encode()).hexdigest()
-
-    report = SignedReport(
-        ticket_id=msg.ticket_id,
-        severity="high" if verdict == "malicious" else ("medium" if verdict == "suspicious" else "low"),
-        verdict=verdict,
-        evidence=evidence,
-        report_hash=report_hash,
-        timestamp=datetime.utcnow().isoformat(),
-        signature="stub-signature",  # replace with enclave signing
-    )
-
-    await ctx.send(sender, report)
-
-
-# Optional chat endpoint for quick testing
-@agent.on_message(model=ChatMessage)
-async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
-    await ctx.send(sender, ChatResponse(
-        response="Analyzer is running. Send an AnalysisRequest to analyse artifacts.",
-        requires_action=False
-    ))
-
-
 if __name__ == "__main__":
-    run_agent(agent)
+    analyzer_agent.include(analysis_protocol, publish_manifest=True)
+    analyzer_agent.run()
