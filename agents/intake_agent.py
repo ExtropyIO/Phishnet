@@ -26,6 +26,11 @@ except ImportError:
         ChatMessage, ChatResponse
     )
 
+# Import MeTTa KG client
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from metta_kg_client import MeTTaKGClient
+
+# Create agent
 chat_protocol = Protocol(name="PhishingAnalysisProtocol", version="1.0.0")
 
 # Create query protocol for HTTP endpoints
@@ -45,11 +50,15 @@ class IntakeAgentCore:
     def __init__(self):
         self.tickets: Dict[str, AnalysisTicket] = {}
         self.analyzer_address = os.getenv("ANALYZER_ADDRESS")
-        # Track original senders for each ticket (for agent-to-agent messaging)
+
+        self.kg_client = MeTTaKGClient()
         self.ticket_senders: Dict[str, str] = {}
+  # Track original senders for each ticket (for agent-to-agent messaging)
+    def receive_artifact(self, artifact: Artifact) -> AnalysisTicket:  
     
     def create_analysis_request(self, artifact: Artifact, sender: str) -> AnalysisRequest:
         """Create analysis request directly from artifact"""
+
         ticket_id = str(uuid.uuid4())
         
         # Store ticket for tracking
@@ -60,6 +69,19 @@ class IntakeAgentCore:
             status="received"
         )
         self.tickets[ticket_id] = ticket
+
+        # Add submission to KG
+        self.kg_client.add_fact(
+            fact_type="url_submission" if artifact.type == ArtifactType.URL else "transaction_submission",
+            fact_value=artifact.content,
+            metadata={"user_id": artifact.user_id}
+        )
+        return ticket
+
+    def package_for_analysis(self, ticket: AnalysisTicket) -> AnalysisRequest:
+        return AnalysisRequest(
+            ticket_id=ticket.ticket_id,
+            artifact=ticket.artifact,
         
         # Track the original sender for this ticket
         self.ticket_senders[ticket_id] = sender
@@ -76,12 +98,8 @@ core = IntakeAgentCore()
 
 @intake_agent.on_event("startup")
 async def startup(ctx: Context):
-    ctx.logger.info("IntakeAgent started - ready to receive artifacts")
+    ctx.logger.info("IntakeAgent started - MeTTa KG enabled")
     ctx.logger.info(f"Agent address: {intake_agent.address}")
-    if core.analyzer_address:
-        ctx.logger.info(f"AnalyzerAgent address: {core.analyzer_address}")
-    else:
-        ctx.logger.warning("ANALYZER_ADDRESS not set - analysis requests will be queued")
 
 
 @chat_protocol.on_message(ChatMessage, replies=ChatResponse)
@@ -95,11 +113,41 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
         artifact_type = ArtifactType.URL
     elif 'solana' in message_text or 'transaction' in message_text:
         artifact_type = ArtifactType.SOLANA_TRANSACTION
+
+    if artifact_type:
+        artifact = Artifact(type=artifact_type, content=msg.message, user_id=msg.user_id)
+        ticket = core.receive_artifact(artifact)
+        analysis_request = core.package_for_analysis(ticket)
+
+        ctx.logger.info(f"Created ticket {ticket.ticket_id} for analysis")
+
+        if core.analyzer_address:
+            try:
+                await ctx.send(core.analyzer_address, analysis_request)
+                response = ChatResponse(
+                    response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n🔍 Sending to AnalyzerAgent...",
+                    requires_action=True,
+                    action_type="analysis"
+                )
+            except Exception as e:
+                ctx.logger.error(f"Failed to send to AnalyzerAgent: {e}")
+                response = ChatResponse(
+                    response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n⚠️ AnalyzerAgent not available - queued",
+                    requires_action=True,
+                    action_type="analysis"
+                )
+        else:
+            response = ChatResponse(
+                response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n⚠️ AnalyzerAgent not configured",
+                requires_action=True,
+                action_type="analysis"
+            )
     else:
         response = ChatResponse(
-            response="Hello! I can analyze URLs and Solana transactions for phishing threats. What would you like me to check?",
+            response="Hello! I can analyze URLs for phishing threats. Please provide a URL.",
             requires_action=False
         )
+
         await ctx.send(sender, response)
         return
     
@@ -133,7 +181,6 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
 
 @chat_protocol.on_message(model=SignedReport)
 async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
-    """Handle analysis results from AnalyzerAgent"""
     ctx.logger.info(f"Received analysis result: {msg.verdict}")
     
     # Get the original sender using ticket_id
