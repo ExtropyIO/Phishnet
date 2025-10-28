@@ -43,6 +43,7 @@ analyzer_agent = Agent(
     port=8002,
     protocols=[query_protocol],
     mailbox=True
+    endpoint="http://TeeAge-Alb16-asYi7vJYnLGj-755747286.eu-west-1.elb.amazonaws.com/analyzer/"
 )
 
 class AnalyzerAgentCore:
