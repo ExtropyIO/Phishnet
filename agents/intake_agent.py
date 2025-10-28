@@ -7,9 +7,17 @@ Uses proper uAgents communication patterns
 import os
 import uuid
 from datetime import datetime
+
 from typing import Dict, Any
 from uagents import Agent, Context, Protocol, Model
+from threat_detection.models.url_analyzer import URLAnalyzer
 
+from shared.health import start_health_server
+
+start_health_server()
+
+
+# Import schemas
 try:
     from shared.schemas.artifact_schema import (
         Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
