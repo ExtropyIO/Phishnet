@@ -265,11 +265,6 @@ async def chat_endpoint(ctx: Context, request: ChatMessage) -> ChatResponse:
         action_type="analysis"
     )
 
-# Health endpoint for deployment verification
-@intake_agent.on_rest_get("/health")
-async def health_endpoint(ctx: Context) -> str:
-    return "ok"
-
 if __name__ == "__main__":
     intake_agent.include(chat_protocol, publish_manifest=True)
     intake_agent.run()

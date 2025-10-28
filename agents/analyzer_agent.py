@@ -148,10 +148,6 @@ async def analyze_endpoint(ctx: Context, request: AnalysisRequest) -> SignedRepo
     ctx.logger.info(f"HTTP analysis result: {signed_report.verdict}")
     return signed_report
 
-@analyzer_agent.on_rest_get("/health")
-async def health_endpoint(ctx: Context) -> str:
-    return "ok"
-
 if __name__ == "__main__":
     analyzer_agent.include(analysis_protocol, publish_manifest=True)
     analyzer_agent.run()
