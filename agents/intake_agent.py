@@ -7,9 +7,6 @@ from uagents import Agent, Context, Protocol, Model
 from uagents.protocols.query import QueryProtocol
 from threat_detection.models.url_analyzer import URLAnalyzer
 
-from shared.health import start_health_server
-
-start_health_server()
 
 
 # Import schemas
