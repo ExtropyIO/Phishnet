@@ -1,14 +1,9 @@
-"""
-IntakeAgent - uAgents Framework Implementation
-Receives user artifacts and initiates analysis workflow
-Uses proper uAgents communication patterns
-"""
-
 import os
 import uuid
 from datetime import datetime
 from typing import Dict, Any
 from uagents import Agent, Context, Protocol, Model
+from uagents.protocols.query import QueryProtocol
 
 try:
     from shared.schemas.artifact_schema import (
@@ -23,13 +18,16 @@ except ImportError:
         ChatMessage, ChatResponse
     )
 
-# Define the chat protocol for IntakeAgent
 chat_protocol = Protocol(name="PhishingAnalysisProtocol", version="1.0.0")
+
+# Create query protocol for HTTP endpoints
+query_protocol = QueryProtocol()
 
 intake_agent = Agent(
     name="IntakeAgent",
     seed="intake-agent-seed",
     port=8001,
+    protocols=[query_protocol],
     mailbox=True
 )
 
@@ -77,7 +75,7 @@ async def startup(ctx: Context):
         ctx.logger.warning("ANALYZER_ADDRESS not set - analysis requests will be queued")
 
 
-@chat_protocol.on_message(model=ChatMessage)
+@chat_protocol.on_message(ChatMessage, replies=ChatResponse)
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
     """Handle chat messages from users"""
     ctx.logger.info(f"Received chat from {sender}: {msg.message}")
@@ -174,6 +172,54 @@ async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
                 del core.tickets[ticket_id]
     else:
         ctx.logger.warning("Could not find original sender for analysis result")
+
+# HTTP endpoint for Agentverse chat
+@intake_agent.on_rest_post("/chat", ChatMessage, ChatResponse)
+async def chat_endpoint(ctx: Context, request: ChatMessage) -> ChatResponse:
+    ctx.logger.info(f"HTTP chat request: {request.message}")
+    
+    message_text = request.message.lower()
+    if 'url' in message_text or message_text.startswith('http'):
+        artifact_type = ArtifactType.URL
+    elif 'solana' in message_text or 'transaction' in message_text:
+        artifact_type = ArtifactType.SOLANA_TRANSACTION
+    else:
+        return ChatResponse(
+            response="Hello! I can analyze URLs and Solana transactions for phishing threats. What would you like me to check?",
+            requires_action=False
+        )
+    
+    # Create artifact and analysis request
+    artifact = Artifact(
+        type=artifact_type,
+        content=request.message,
+        user_id=request.user_id
+    )
+    analysis_request = core.create_analysis_request(artifact, "http_client")
+    
+    ctx.logger.info(f"Created ticket {analysis_request.ticket_id} for HTTP analysis")
+    
+    if core.analyzer_address:
+        try:
+            await ctx.send(core.analyzer_address, analysis_request)
+            ctx.logger.info(f"Sent analysis request to AnalyzerAgent for ticket {analysis_request.ticket_id}")
+            response_text = f"Received your {artifact_type} for analysis. Ticket ID: {analysis_request.ticket_id}\n\n🔍 Sending to AnalyzerAgent for processing..."
+        except Exception as e:
+            ctx.logger.error(f"Failed to send to AnalyzerAgent: {e}")
+            response_text = f"Received your {artifact_type} for analysis. Ticket ID: {analysis_request.ticket_id}\n\nAnalyzerAgent not available - analysis queued"
+    else:
+        response_text = f"Received your {artifact_type} for analysis. Ticket ID: {analysis_request.ticket_id}\n\nAnalyzerAgent not configured"
+    
+    return ChatResponse(
+        response=response_text,
+        requires_action=True,
+        action_type="analysis"
+    )
+
+# Health endpoint for deployment verification
+@intake_agent.on_rest_get("/health")
+async def health_endpoint(ctx: Context) -> str:
+    return "ok"
 
 if __name__ == "__main__":
     intake_agent.include(chat_protocol, publish_manifest=True)
