@@ -11,7 +11,6 @@ sys.path.append(os.path.join(threat_detection_path, 'models'))
 
 # Import analyzers
 # Import URL analyzer (now uses absolute paths internally)
-from threat_detection.models.url_analyzer import URLAnalyzer
 from datetime import datetime
 from shared.health import start_health_server
 from url_analyzer import URLAnalyzer
@@ -20,9 +19,6 @@ from solana_analyzer import SolanaAnalyzer
 # Import MeTTa KG client
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from metta_kg_client import MeTTaKGClient
-
-start_health_server()
-from shared.health import start_health_server
 
 start_health_server()
 # Import schemas
@@ -55,7 +51,6 @@ class AnalyzerAgentCore:
         self.url_analyzer = URLAnalyzer()
         self.solana_analyzer = SolanaAnalyzer()
         self.kg_client = MeTTaKGClient()
-        
          # Future:
         self.tee_service_url = os.getenv("TEE_SERVICE_URL", "http://localhost:8080")
         self.timeout = 30
