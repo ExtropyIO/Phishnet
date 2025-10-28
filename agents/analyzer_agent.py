@@ -45,7 +45,7 @@ analyzer_agent = Agent(
     seed="analyzer-agent-seed",
     port=8002,
     protocols=[query_protocol],
-    mailbox=True
+    mailbox=True,
     endpoint="http://TeeAge-Alb16-asYi7vJYnLGj-755747286.eu-west-1.elb.amazonaws.com/analyzer/"
 )
 
@@ -103,12 +103,9 @@ class AnalyzerAgentCore:
                 verdict=result.get("verdict", "UNKNOWN"),
                 severity=result.get("severity", "low"),
                 evidence=result,
-                timestamp=datetime.now().isoformat()
-                 ticket_id=req.ticket_id
-              
-          
-         
-         
+                timestamp=datetime.now().isoformat(),
+                ticket_id=req.ticket_id
+            )
 
         except Exception as e:
             raise Exception(f"Analysis failed: {str(e)}")
@@ -132,14 +129,11 @@ async def startup(ctx: Context):
 @analysis_protocol.on_message(AnalysisRequest, replies=SignedReport)
 async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
     ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
+    ctx.logger.info(f"Passing {msg.artifact.type} to Analyzer")
+
     signed_report = await core.analyze_request(msg)
+    
     ctx.logger.info(f"Analysis result: {signed_report.verdict}")
-    
-    # Pass to URL analyzer
-    ctx.logger.info(f"Passing {msg.artifact.type} to URLAnalyzer")
-    signed_report = await core.analyze_request(msg)
-    
-    ctx.logger.info(f"URL analyzer result: {signed_report.verdict}")
     ctx.logger.info(f"Attestation: {signed_report.attestation}")
     
     await ctx.send(sender, signed_report)
@@ -159,7 +153,5 @@ async def health_endpoint(ctx: Context) -> str:
     return "ok"
 
 if __name__ == "__main__":
-    analyzer_agent.run()
-
     analyzer_agent.include(analysis_protocol, publish_manifest=True)
     analyzer_agent.run()

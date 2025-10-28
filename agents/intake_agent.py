@@ -41,7 +41,7 @@ intake_agent = Agent(
     seed="intake-agent-seed",
     port=8001,
     protocols=[query_protocol],
-    mailbox=True
+    mailbox=True,
     endpoint="http://TeeAge-Alb16-asYi7vJYnLGj-755747286.eu-west-1.elb.amazonaws.com/intake/"
 )
 
@@ -54,11 +54,10 @@ class IntakeAgentCore:
         self.kg_client = MeTTaKGClient()
         self.ticket_senders: Dict[str, str] = {}
   # Track original senders for each ticket (for agent-to-agent messaging)
-    def receive_artifact(self, artifact: Artifact) -> AnalysisTicket:  
+    # def receive_artifact(self, artifact: Artifact) -> AnalysisTicket:  
     
     def create_analysis_request(self, artifact: Artifact, sender: str) -> AnalysisRequest:
         """Create analysis request directly from artifact"""
-
         ticket_id = str(uuid.uuid4())
         
         # Store ticket for tracking
@@ -70,21 +69,15 @@ class IntakeAgentCore:
         )
         self.tickets[ticket_id] = ticket
 
+        # Track the original sender for this ticket
+        self.ticket_senders[ticket_id] = sender
+
         # Add submission to KG
         self.kg_client.add_fact(
             fact_type="url_submission" if artifact.type == ArtifactType.URL else "transaction_submission",
             fact_value=artifact.content,
             metadata={"user_id": artifact.user_id}
         )
-        return ticket
-
-    def package_for_analysis(self, ticket: AnalysisTicket) -> AnalysisRequest:
-        return AnalysisRequest(
-            ticket_id=ticket.ticket_id,
-            artifact=ticket.artifact,
-        
-        # Track the original sender for this ticket
-        self.ticket_senders[ticket_id] = sender
         
         # Create analysis request
         return AnalysisRequest(
