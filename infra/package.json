@@ -1,0 +1,23 @@
+{
+  "name": "tee-agents-infra",
+  "version": "0.1.0",
+  "bin": {
+    "tee-agents-infra": "bin/app.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.152.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "constructs": "^10.3.0",
+    "aws-cdk-lib": "2.152.0"
+  }
+}
