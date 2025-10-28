@@ -5,6 +5,7 @@ pydantic>=2.12.0
 
 # HTTP client for analyzer agent
 aiohttp>=3.8.0
+requests>=2.31.0
 
 # URL analysis dependencies
 idna>=3.4
