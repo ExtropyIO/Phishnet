@@ -1,124 +1,92 @@
+"""
+AnalyzerAgent - performs deterministic analysis (stub here) and returns a SignedReport.
+Publishes public endpoint via shared bootstrap and exposes /analyzer/health on :8080.
+"""
+
 import os
-import uuid
-import aiohttp
-import sys
+import hashlib
 from datetime import datetime
-from typing import Dict, Any
-from uagents import Agent, Context, Protocol, Model
-from uagents.protocols.query import QueryProtocol
 
-# Add threat detection to path
-threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
-sys.path.append(os.path.join(threat_detection_path, 'models'))
+from uagents import Agent, Context
 
-# Import URL analyzer (now uses absolute paths internally)
-from threat_detection.models.url_analyzer import URLAnalyzer
-from datetime import datetime
-from shared.health import start_health_server
-from url_analyzer import URLAnalyzer
+from shared.agent_bootstrap import build_agent, start_sidecars, run_agent
 
-start_health_server()
-from shared.health import start_health_server
-
-start_health_server()
-# Import schemas
 try:
     from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisRequest, SignedReport
+        AnalysisRequest, SignedReport, ChatMessage, ChatResponse
     )
 except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import sys, pathlib
+    sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
     from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisRequest, SignedReport
+        AnalysisRequest, SignedReport, ChatMessage, ChatResponse
     )
 
-analysis_protocol = Protocol(name="AnalysisProtocol", version="1.0.0")
+agent: Agent = build_agent("AnalyzerAgent")
+start_sidecars()
 
-query_protocol = QueryProtocol()
 
-analyzer_agent = Agent(
-    name="AnalyzerAgent",
-    seed="analyzer-agent-seed",
-    port=8002,
-    protocols=[query_protocol],
-    mailbox=True
-    endpoint="http://TeeAge-Alb16-asYi7vJYnLGj-755747286.eu-west-1.elb.amazonaws.com/analyzer/"
-)
+def _score(artifact_content: str) -> float:
+    """Very naive, deterministic stub scoring (replace with real pipeline)."""
+    lower = (artifact_content or "").lower()
+    s = 0.0
+    if "http" in lower: s += 0.2
+    if "login" in lower or "wallet" in lower: s += 0.4
+    if "bonus" in lower or "airdrop" in lower: s += 0.4
+    return min(1.0, s)
 
-class AnalyzerAgentCore:
-    def __init__(self):
-        # Current: Direct URL analyzer
-        self.url_analyzer = URLAnalyzer()
-        
-        # Future:
-        self.tee_service_url = os.getenv("TEE_SERVICE_URL", "http://localhost:8080")
-        self.timeout = 30
-    
-    async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
-        """Analyze request - currently uses URL analyzer, future will use TEE"""
-        try:
-            analysis_result = self.url_analyzer.analyze_url(req.artifact.content)
-            
-            # Create SignedReport from URL analyzer result
-            return SignedReport(
-                report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
-                attestation="url_analyzer",
-                signature=f"analyzer_sig_{uuid.uuid4().hex[:8]}",
-                verdict=analysis_result.get("verdict", "UNKNOWN"),
-                severity=analysis_result.get("severity", "low"),
-                evidence=analysis_result,
-                timestamp=datetime.now().isoformat(),
-                ticket_id=req.ticket_id
-            )
-            
-        except Exception as e:
-            raise Exception(f"Analysis failed: {str(e)}")
-    
-    # async def analyze_request_tee(self, req: AnalysisRequest) -> SignedReport:
-    #     """Future: Analyze request via TEE service over HTTP"""
-    #     # TODO: Implement TEE communication
-    #     # async with aiohttp.ClientSession() as session:
-    #     #     async with session.post(f"{self.tee_service_url}/analyze", json=req.dict()) as response:
-    #     #         tee_result = await response.json()
-    #     #         return SignedReport(**tee_result)
-    #     pass
+def _verdict(score: float) -> str:
+    if score >= 0.8: return "malicious"
+    if score >= 0.5: return "suspicious"
+    return "benign"
 
-core = AnalyzerAgentCore()
 
-@analyzer_agent.on_event("startup")
+@agent.on_event("startup")
 async def startup(ctx: Context):
-    ctx.logger.info("AnalyzerAgent started - pass-through to URL analyzer")
-    ctx.logger.info(f"Agent address: {analyzer_agent.address}")
+    ctx.logger.info("AnalyzerAgent ready")
+    pb = os.getenv("PUBLIC_BASE_URL")
+    ctx.logger.info(f"Public endpoint: {pb.rstrip('/')+'/submit' if pb else '(unset)'}")
 
-@analysis_protocol.on_message(AnalysisRequest, replies=SignedReport)
-async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):
-    """Handle analysis requests from IntakeAgent"""
-    ctx.logger.info(f"Received analysis request for ticket {msg.ticket_id}")
-    
-    # Pass to URL analyzer
-    ctx.logger.info(f"Passing {msg.artifact.type} to URLAnalyzer")
-    signed_report = await core.analyze_request(msg)
-    
-    ctx.logger.info(f"URL analyzer result: {signed_report.verdict}")
-    ctx.logger.info(f"Attestation: {signed_report.attestation}")
-    
-    await ctx.send(sender, signed_report)
 
-# HTTP endpoint for direct analysis requests
-@analyzer_agent.on_rest_post("/analyze", AnalysisRequest, SignedReport)
-async def analyze_endpoint(ctx: Context, request: AnalysisRequest) -> SignedReport:
-    ctx.logger.info(f"HTTP analysis request for ticket {request.ticket_id}")
-    
-    signed_report = await core.analyze_request(request)
-    
-    ctx.logger.info(f"HTTP analysis result: {signed_report.verdict}")
-    return signed_report
+@agent.on_message(model=AnalysisRequest)
+async def handle_analysis(ctx: Context, sender: str, msg: AnalysisRequest):
+    content = msg.artifact.content
+    score = _score(content)
+    verdict = _verdict(score)
 
-@analyzer_agent.on_rest_get("/health")
-async def health_endpoint(ctx: Context) -> str:
-    return "ok"
+    evidence = {
+        "signals": {
+            "has_http": "http" in content.lower(),
+            "has_login_or_wallet": any(k in content.lower() for k in ["login", "wallet"]),
+            "has_incentive_bait": any(k in content.lower() for k in ["bonus", "airdrop"]),
+        },
+        "score": score,
+    }
+
+    raw = f"{msg.ticket_id}|{content}|{score}|{verdict}|{datetime.utcnow().isoformat()}"
+    report_hash = hashlib.sha256(raw.encode()).hexdigest()
+
+    report = SignedReport(
+        ticket_id=msg.ticket_id,
+        severity="high" if verdict == "malicious" else ("medium" if verdict == "suspicious" else "low"),
+        verdict=verdict,
+        evidence=evidence,
+        report_hash=report_hash,
+        timestamp=datetime.utcnow().isoformat(),
+        signature="stub-signature",  # replace with enclave signing
+    )
+
+    await ctx.send(sender, report)
+
+
+# Optional chat endpoint for quick testing
+@agent.on_message(model=ChatMessage)
+async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
+    await ctx.send(sender, ChatResponse(
+        response="Analyzer is running. Send an AnalysisRequest to analyse artifacts.",
+        requires_action=False
+    ))
+
 
 if __name__ == "__main__":
-    analyzer_agent.include(analysis_protocol, publish_manifest=True)
-    analyzer_agent.run()
+    run_agent(agent)
