@@ -29,7 +29,8 @@ chat_protocol = Protocol(name="PhishingAnalysisProtocol", version="1.0.0")
 intake_agent = Agent(
     name="IntakeAgent",
     seed="intake-agent-seed",
-    port=8001
+    port=8001,
+    mailbox=True
 )
 
 

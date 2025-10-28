@@ -35,7 +35,8 @@ analysis_protocol = Protocol(name="AnalysisProtocol", version="1.0.0")
 analyzer_agent = Agent(
     name="AnalyzerAgent",
     seed="analyzer-agent-seed",
-    port=8002
+    port=8002,
+    mailbox=True
 )
 
 class AnalyzerAgentCore:
