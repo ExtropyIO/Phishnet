@@ -51,7 +51,7 @@ class AnalyzerAgentCore:
         self.url_analyzer = URLAnalyzer()
         self.solana_analyzer = SolanaAnalyzer()
         self.kg_client = MeTTaKGClient()
-         # Future:
+        # Future:
         self.tee_service_url = os.getenv("TEE_SERVICE_URL", "http://localhost:8080")
         self.timeout = 30
 
