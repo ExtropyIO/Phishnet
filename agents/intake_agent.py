@@ -1,11 +1,14 @@
+"""
+IntakeAgent - receives artifacts and initiates analysis workflow.
+Publishes a public endpoint via shared bootstrap and exposes /intake/health on :8080.
+"""
+
 import os
 import uuid
 from datetime import datetime
+from typing import Dict
 
-from typing import Dict, Any
-from uagents import Agent, Context, Protocol, Model
-from uagents.protocols.query import QueryProtocol
-from threat_detection.models.url_analyzer import URLAnalyzer
+from uagents import Agent, Context
 
 
 
@@ -16,8 +19,8 @@ try:
         ChatMessage, ChatResponse
     )
 except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import sys, pathlib
+    sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
     from shared.schemas.artifact_schema import (
         Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
         ChatMessage, ChatResponse
@@ -30,8 +33,8 @@ from metta_kg_client import MeTTaKGClient
 # Create agent
 chat_protocol = Protocol(name="PhishingAnalysisProtocol", version="1.0.0")
 
-# Create query protocol for HTTP endpoints
-query_protocol = QueryProtocol()
+# Start the :8080 health/proxy (uses SERVICE_BASE, PORT, UAGENTS_PORT envs)
+start_sidecars()
 
 intake_agent = Agent(
     name="IntakeAgent",
@@ -42,7 +45,9 @@ intake_agent = Agent(
     endpoint="http://TeeAge-Alb16-asYi7vJYnLGj-755747286.eu-west-1.elb.amazonaws.com/intake/"
 )
 
-
+# -------------------------
+# Core agent logic
+# -------------------------
 class IntakeAgentCore:
     def __init__(self):
         self.tickets: Dict[str, AnalysisTicket] = {}
@@ -56,13 +61,11 @@ class IntakeAgentCore:
     def create_analysis_request(self, artifact: Artifact, sender: str) -> AnalysisRequest:
         """Create analysis request directly from artifact"""
         ticket_id = str(uuid.uuid4())
-        
-        # Store ticket for tracking
         ticket = AnalysisTicket(
             ticket_id=ticket_id,
             artifact=artifact,
             timestamp=datetime.now().isoformat(),
-            status="received"
+            status="received",
         )
         self.tickets[ticket_id] = ticket
 
@@ -78,21 +81,25 @@ class IntakeAgentCore:
         
         # Create analysis request
         return AnalysisRequest(
-            ticket_id=ticket_id,
-            artifact=artifact,
-            nonce="",
-            session_id=""
+            ticket_id=ticket.ticket_id,
+            artifact=ticket.artifact,
+            nonce="",      # set by analyzer
+            session_id="", # set by analyzer
         )
 
 core = IntakeAgentCore()
 
-@intake_agent.on_event("startup")
+
+# -------------------------
+# Handlers
+# -------------------------
+@agent.on_event("startup")
 async def startup(ctx: Context):
     ctx.logger.info("IntakeAgent started - MeTTa KG enabled")
     ctx.logger.info(f"Agent address: {intake_agent.address}")
 
 
-@chat_protocol.on_message(ChatMessage, replies=ChatResponse)
+@agent.on_message(model=ChatMessage)
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
     """Handle chat messages from users"""
     ctx.logger.info(f"Received chat from {sender}: {msg.message}")
@@ -153,21 +160,13 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
     
     if core.analyzer_address:
         try:
-            await ctx.send(core.analyzer_address, analysis_request)
-            ctx.logger.info(f"Sent analysis request to AnalyzerAgent for ticket {analysis_request.ticket_id}")
-            response_text = f"Received your {artifact_type} for analysis. Ticket ID: {analysis_request.ticket_id}\n\n🔍 Sending to AnalyzerAgent for processing..."
+            await ctx.send(core.analyzer_address, req)
+            return await ctx.send(sender, ChatResponse(
+                response=f"✅ Received your {a_type}. Ticket: {ticket.ticket_id}\n🔍 Sent to AnalyzerAgent.",
+                requires_action=True, action_type="analysis"
+            ))
         except Exception as e:
-            ctx.logger.error(f"Failed to send to AnalyzerAgent: {e}")
-            response_text = f"Received your {artifact_type} for analysis. Ticket ID: {analysis_request.ticket_id}\n\nAnalyzerAgent not available - analysis queued"
-    else:
-        response_text = f"Received your {artifact_type} for analysis. Ticket ID: {analysis_request.ticket_id}\n\nAnalyzerAgent not configured"
-    
-    response = ChatResponse(
-        response=response_text,
-        requires_action=True,
-        action_type="analysis"
-    )
-    await ctx.send(sender, response)
+            ctx.logger.error(f"send to analyzer failed: {e}")
 
 @chat_protocol.on_message(model=SignedReport)
 async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
@@ -190,34 +189,14 @@ async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
         response_text = f"""
 {verdict_emoji} **Analysis Complete!**
 
-**Severity:** {severity_emoji} {msg.severity.upper()}
-**Verdict:** {msg.verdict.upper()}
-**Report Hash:** `{msg.report_hash}`
-**Timestamp:** {msg.timestamp}
 
-**Evidence:**
-{msg.evidence}
+@agent.on_message(model=SignedReport)
+async def handle_report(ctx: Context, sender: str, msg: SignedReport):
+    ctx.logger.info("Analysis Complete")
+    ctx.logger.info(f"Severity: {msg.severity.upper()} | Verdict: {msg.verdict}")
+    ctx.logger.debug(f"Evidence: {msg.evidence}")
+    ctx.logger.info(f"Report: {msg.report_hash} @ {msg.timestamp}")
 
-**Attestation:** {msg.attestation}
-**Signature:** {msg.signature}
-        """
-        
-        # Send response back to original agent user
-        response = ChatResponse(
-            response=response_text,
-            requires_action=False
-        )
-        
-        await ctx.send(original_sender, response)
-        ctx.logger.info(f"✅ Sent analysis result to original user: {original_sender}")
-        
-        # Clean up tracking
-        if ticket_id:
-            del core.ticket_senders[ticket_id]
-            if ticket_id in core.tickets:
-                del core.tickets[ticket_id]
-    else:
-        ctx.logger.warning("Could not find original sender for analysis result")
 
 # HTTP endpoint for Agentverse chat
 @intake_agent.on_rest_post("/chat", ChatMessage, ChatResponse)

@@ -1,3 +1,8 @@
+"""
+AnalyzerAgent - performs deterministic analysis (stub here) and returns a SignedReport.
+Publishes public endpoint via shared bootstrap and exposes /analyzer/health on :8080.
+"""
+
 import os
 import uuid
 import sys
@@ -5,9 +10,7 @@ from typing import Dict, Any
 from uagents import Agent, Context, Protocol, Model
 from uagents.protocols.query import QueryProtocol
 
-# Add threat detection to path
-threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
-sys.path.append(os.path.join(threat_detection_path, 'models'))
+from uagents import Agent, Context
 
 # Import analyzers
 # Import URL analyzer (now uses absolute paths internally)
@@ -24,17 +27,17 @@ start_health_server()
 # Import schemas
 try:
     from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisRequest, SignedReport
+        AnalysisRequest, SignedReport, ChatMessage, ChatResponse
     )
 except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisRequest, SignedReport
+        AnalysisRequest, SignedReport, ChatMessage, ChatResponse
     )
 
-analysis_protocol = Protocol(name="AnalysisProtocol", version="1.0.0")
+agent: Agent = build_agent("AnalyzerAgent")
+start_sidecars()
 
-query_protocol = QueryProtocol()
 
 analyzer_agent = Agent(
     name="AnalyzerAgent",
@@ -114,9 +117,8 @@ class AnalyzerAgentCore:
     #     #         return SignedReport(**tee_result)
     #     pass
 
-core = AnalyzerAgentCore()
 
-@analyzer_agent.on_event("startup")
+@agent.on_event("startup")
 async def startup(ctx: Context):
     ctx.logger.info("AnalyzerAgent started - MeTTa KG enabled")
     ctx.logger.info(f"Agent address: {analyzer_agent.address}")
@@ -133,15 +135,11 @@ async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisReques
     
     await ctx.send(sender, signed_report)
 
-# HTTP endpoint for direct analysis requests
-@analyzer_agent.on_rest_post("/analyze", AnalysisRequest, SignedReport)
-async def analyze_endpoint(ctx: Context, request: AnalysisRequest) -> SignedReport:
-    ctx.logger.info(f"HTTP analysis request for ticket {request.ticket_id}")
-    
-    signed_report = await core.analyze_request(request)
-    
-    ctx.logger.info(f"HTTP analysis result: {signed_report.verdict}")
-    return signed_report
+@agent.on_message(model=AnalysisRequest)
+async def handle_analysis(ctx: Context, sender: str, msg: AnalysisRequest):
+    content = msg.artifact.content
+    score = _score(content)
+    verdict = _verdict(score)
 
 if __name__ == "__main__":
     analyzer_agent.include(analysis_protocol, publish_manifest=True)
