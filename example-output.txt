@@ -1,0 +1,147 @@
+joshregnart@Joshs-MBP-2 Phishnet % lsof -i :8001 | awk 'NR>1 {print $2}' | xargs -r kill -9; lsof -i :8002 | awk 'NR>1 {print $2}' | xargs -r kill -9; lsof -i :8006 | awk 'NR>1 {print $2}' | xargs -r kill -9; lsof -i :8010 | awk 'NR>1 {print $2}' | xargs -r kill -9; lsof -i :8011 | awk 'NR>1 {print $2}' | xargs -r kill -9; cd /Users/joshregnart/Documents/Phishnet; export UAGENTS_DISABLE_REGISTRATION="true"; export ANALYZER_ADDRESS='agent1qf53vfnl0axjzqf0jnh2ltersdrgmua97aaj5kqygk54060p7auz5jnl6q7'; export REFEREE_ADDRESS='agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz'; export ONCHAIN_ADDRESS='agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq'; PYTHONPATH=. python3 agents/referee_agent.py & referee_pid=$!; sleep 2; PYTHONPATH=. python3 agents/onchain_agent.py & onchain_pid=$!; sleep 2; PYTHONPATH=. python3 agents/analyzer_agent.py & analyzer_pid=$!; sleep 3; PYTHONPATH=. python3 agents/intake_agent.py & intake_pid=$!; sleep 6; PYTHONPATH=. python3 tests/test_url_analysis.py & test_pid=$!
+[4]  - killed     PYTHONPATH=. python3 agents/intake_agent.py
+[3]  - killed     PYTHONPATH=. python3 agents/analyzer_agent.py
+[5]  + killed     PYTHONPATH=. python3 tests/test_url_analysis.py
+[1]  - killed     PYTHONPATH=. python3 agents/referee_agent.py
+[1] 71385
+[2]  - killed     PYTHONPATH=. python3 agents/onchain_agent.py
+INFO:     [RefereeAgent]: Starting agent with address: agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [RefereeAgent]: RefereeAgent ready
+INFO:     [RefereeAgent]: Public endpoint: (unset)
+INFO:     [RefereeAgent]: Agent inspector available at https://agentverse.ai/inspect/?uri=http%3A//127.0.0.1%3A8010&address=agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [RefereeAgent]: Starting server on http://0.0.0.0:8010 (Press CTRL+C to quit)
+INFO:     [uagents.registration]: Registration on Almanac API successful
+[2] 71390
+INFO:     [uagents.registration]: Almanac contract registration is up to date!
+INFO:     [OnchainAgent]: Starting agent with address: agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [OnchainAgent]: OnchainAgent ready
+INFO:     [OnchainAgent]: Public endpoint: (unset)
+INFO:     [OnchainAgent]: Agent inspector available at https://agentverse.ai/inspect/?uri=http%3A//127.0.0.1%3A8011&address=agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [OnchainAgent]: Starting server on http://0.0.0.0:8011 (Press CTRL+C to quit)
+INFO:     [uagents.registration]: Registration on Almanac API successful
+INFO:     [uagents.registration]: Almanac contract registration is up to date!
+[3] 71392
+INFO:     [AnalyzerAgent]: Starting agent with address: agent1qf53vfnl0axjzqf0jnh2ltersdrgmua97aaj5kqygk54060p7auz5jnl6q7
+INFO:     [AnalyzerAgent]: AnalyzerAgent started - pass-through to URL analyzer
+INFO:     [AnalyzerAgent]: Agent address: agent1qf53vfnl0axjzqf0jnh2ltersdrgmua97aaj5kqygk54060p7auz5jnl6q7
+INFO:     [AnalyzerAgent]: Agent inspector available at https://agentverse.ai/inspect/?uri=http%3A//127.0.0.1%3A8002&address=agent1qf53vfnl0axjzqf0jnh2ltersdrgmua97aaj5kqygk54060p7auz5jnl6q7
+INFO:     [AnalyzerAgent]: Starting server on http://0.0.0.0:8002 (Press CTRL+C to quit)
+INFO:     [uagents.registration]: Registration on Almanac API successful
+INFO:     [uagents.registration]: Almanac contract registration is up to date!
+[4] 71401
+INFO:     [IntakeAgent]: Starting agent with address: agent1qwcf3u33m8at9txc6ksyj5vshts6xn0nftvsx25xnnxjvjrqsz9q296pfn0
+INFO:     [IntakeAgent]: IntakeAgent started - ready to receive artifacts
+INFO:     [IntakeAgent]: Agent address: agent1qwcf3u33m8at9txc6ksyj5vshts6xn0nftvsx25xnnxjvjrqsz9q296pfn0
+INFO:     [IntakeAgent]: AnalyzerAgent address: agent1qf53vfnl0axjzqf0jnh2ltersdrgmua97aaj5kqygk54060p7auz5jnl6q7
+INFO:     [IntakeAgent]: RefereeAgent address: agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [IntakeAgent]: OnchainAgent address: agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [IntakeAgent]: Agent inspector available at https://agentverse.ai/inspect/?uri=http%3A//127.0.0.1%3A8001&address=agent1qwcf3u33m8at9txc6ksyj5vshts6xn0nftvsx25xnnxjvjrqsz9q296pfn0
+INFO:     [IntakeAgent]: Starting server on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     [uagents.registration]: Registration on Almanac API successful
+INFO:     [uagents.registration]: Almanac contract registration is up to date!
+[5] 71406
+joshregnart@Joshs-MBP-2 Phishnet % INFO:     [TestClient]: Starting agent with address: agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8
+INFO:     [TestClient]: URLTestClient started on port 8006
+INFO:     [TestClient]: Test client address: agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8
+INFO:     [TestClient]: Test client name: TestClient
+INFO:     [TestClient]: Test client configured with endpoint: http://127.0.0.1:8006
+INFO:     [TestClient]: Testing artifact 1: High-risk URL
+INFO:     [TestClient]: Agent inspector available at https://agentverse.ai/inspect/?uri=http%3A//127.0.0.1%3A8006&address=agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8
+INFO:     [TestClient]: Starting server on http://0.0.0.0:8006 (Press CTRL+C to quit)
+INFO:     [IntakeAgent]: Received chat from agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8: check url https://paypal.com.example.xyz/login?private_key=123
+INFO:     [IntakeAgent]: Created ticket 61e051d0-033f-411b-ab3d-eb1438d7c274 for analysis
+INFO:     [uagents.registration]: Registration on Almanac API successful
+INFO:     [AnalyzerAgent]: Received analysis request for ticket 61e051d0-033f-411b-ab3d-eb1438d7c274
+INFO:     [AnalyzerAgent]: Routing artifact type url for analysis
+INFO:     [AnalyzerAgent]: Analysis result verdict: unsafe
+INFO:     [AnalyzerAgent]: Attestation source: url_analyzer
+INFO:     [uagents.registration]: Almanac contract registration is up to date!
+ERROR:    [dispenser]: Failed to deliver message to agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8 @ ['http://127.0.0.1:8006']: ['404: {"error": "not found"}']
+INFO:     [IntakeAgent]: Received analysis result: unsafe
+INFO:     [IntakeAgent]: Sending SignedReport for ticket 61e051d0-033f-411b-ab3d-eb1438d7c274 to RefereeAgent @ agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [RefereeAgent]: Verification: valid for ticket 61e051d0-033f-411b-ab3d-eb1438d7c274
+INFO:     [TestClient]: Testing artifact 2: Benign URL
+INFO:     [TestClient]: Testing artifact 3: Malicious Solana transaction
+INFO:     [IntakeAgent]: Forwarding SignedReport for ticket 61e051d0-033f-411b-ab3d-eb1438d7c274 to OnchainAgent @ agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [IntakeAgent]: Analysis result: 
+🔍 Analysis Complete!
+
+Severity: HIGH
+Verdict: unsafe
+Evidence: {'url': 'https://paypal.com.example.xyz/login?private_key=123', 'metadata': {'scheme': 'https', 'domain': 'paypal.com.example.xyz', 'is_ip': False, 'suspicious_tld': True, 'subdomain_tricks': False, 'punycode': False, 'path_length': 6, 'query_keywords': ['private_key']}, 'alerts': [{'id': 'kw_private_key', 'description': 'Explicit request for private key (never legitimate)', 'severity': 'high'}, {'id': 'kw_login', 'description': 'Generic login/signin prompts used to phish credentials', 'severity': 'medium'}, {'id': 'kw_login', 'description': 'Generic login prompt often used in phishing URLs', 'severity': 'medium'}, {'id': 'suspicious_tld', 'description': 'Suspicious TLD detected: xyz', 'severity': 'medium'}, {'id': 'query_private_key', 'description': 'Suspicious query parameter: private_key', 'severity': 'high'}], 'verdict': 'unsafe', 'severity': 'high'}
+
+Report Hash: analysis_0645bfc362fe4d12
+Timestamp: 2025-10-30T11:05:41.709966
+        
+WARNING:  [IntakeAgent]: Received message with unrecognized schema digest: model:c89a56e64e8e1ccbd5548d0b05332d2a67a3878e151ea2e97c0d3e548c64dc61
+INFO:     [IntakeAgent]: Received chat from agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8: check url https://google.com
+INFO:     [IntakeAgent]: Created ticket 4f59b266-0d45-46f7-be05-3d2579fee543 for analysis
+INFO:     [OnchainAgent]: (stub) would write report analysis_0645bfc362fe4d12 with verdict unsafe to chain
+INFO:     [AnalyzerAgent]: Received analysis request for ticket 4f59b266-0d45-46f7-be05-3d2579fee543
+INFO:     [AnalyzerAgent]: Routing artifact type url for analysis
+INFO:     [AnalyzerAgent]: Analysis result verdict: safe
+INFO:     [AnalyzerAgent]: Attestation source: url_analyzer
+ERROR:    [dispenser]: Failed to deliver message to agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8 @ ['http://127.0.0.1:8006']: ['404: {"error": "not found"}']
+INFO:     [IntakeAgent]: Received chat from agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8: {"artifact_hint": "solana_transaction", "signature": "bad_signature_123", "from_address": "5Jfb3n8eW4JyQrKJktMNBFXnC1zx2YHjRSkzRrTT5QHh", "to_address": "ESSfP3aAcW6Z59ozut9Jkqy9btaX5YTHt25b3Vhs2hsf", "amount": 250.0, "token": "SOL", "timestamp": "2024-05-01T12:30:00Z", "block_height": 250123456}
+INFO:     [IntakeAgent]: Created ticket 6e4e1040-a7a2-4ae6-a0c6-9020ffd5f8b0 for analysis
+INFO:     [AnalyzerAgent]: Received analysis request for ticket 6e4e1040-a7a2-4ae6-a0c6-9020ffd5f8b0
+INFO:     [AnalyzerAgent]: Routing artifact type solana_transaction for analysis
+INFO:     [AnalyzerAgent]: Analysis result verdict: unsafe
+INFO:     [AnalyzerAgent]: Attestation source: solana_analyzer
+ERROR:    [dispenser]: Failed to deliver message to agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8 @ ['http://127.0.0.1:8006']: ['404: {"error": "not found"}']
+INFO:     [IntakeAgent]: Received analysis result: safe
+INFO:     [IntakeAgent]: Sending SignedReport for ticket 4f59b266-0d45-46f7-be05-3d2579fee543 to RefereeAgent @ agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [RefereeAgent]: Verification: valid for ticket 4f59b266-0d45-46f7-be05-3d2579fee543
+INFO:     [TestClient]: Testing artifact 4: Benign Solana transaction
+INFO:     [IntakeAgent]: Forwarding SignedReport for ticket 4f59b266-0d45-46f7-be05-3d2579fee543 to OnchainAgent @ agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [OnchainAgent]: (stub) would write report analysis_fe7164c1df59438f with verdict safe to chain
+INFO:     [IntakeAgent]: Analysis result: 
+🔍 Analysis Complete!
+
+Severity: LOW
+Verdict: safe
+Evidence: {'url': 'https://google.com', 'metadata': {'scheme': 'https', 'domain': 'google.com', 'is_ip': False, 'suspicious_tld': False, 'subdomain_tricks': False, 'punycode': False, 'path_length': 0, 'query_keywords': []}, 'alerts': [], 'verdict': 'safe', 'severity': 'low'}
+
+Report Hash: analysis_fe7164c1df59438f
+Timestamp: 2025-10-30T11:05:47.238599
+        
+INFO:     [IntakeAgent]: Received analysis result: unsafe
+INFO:     [IntakeAgent]: Sending SignedReport for ticket 6e4e1040-a7a2-4ae6-a0c6-9020ffd5f8b0 to RefereeAgent @ agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [RefereeAgent]: Verification: valid for ticket 6e4e1040-a7a2-4ae6-a0c6-9020ffd5f8b0
+INFO:     [IntakeAgent]: Forwarding SignedReport for ticket 6e4e1040-a7a2-4ae6-a0c6-9020ffd5f8b0 to OnchainAgent @ agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [OnchainAgent]: (stub) would write report analysis_cfb13333de3a4578 with verdict unsafe to chain
+INFO:     [IntakeAgent]: Analysis result: 
+🔍 Analysis Complete!
+
+Severity: CRITICAL
+Verdict: unsafe
+Evidence: {'transaction': {'signature': 'bad_signature_123', 'from_address': '5Jfb3n8eW4JyQrKJktMNBFXnC1zx2YHjRSkzRrTT5QHh', 'to_address': 'ESSfP3aAcW6Z59ozut9Jkqy9btaX5YTHt25b3Vhs2hsf', 'amount': 250.0, 'token': 'SOL', 'timestamp': '2024-05-01T12:30:00Z', 'block_height': 250123456}, 'alerts': [{'id': 'malicious_from_5Jfb3n8eW4JyQrKJktMNBFXnC1zx2YHjRSkzRrTT5QHh', 'description': 'Malicious developer wallet detected in previous incidents', 'severity': 'critical'}, {'id': 'malicious_to_ESSfP3aAcW6Z59ozut9Jkqy9btaX5YTHt25b3Vhs2hsf', 'description': 'Malicious developer wallet #2', 'severity': 'critical'}], 'verdict': 'unsafe', 'severity': 'critical'}
+
+Report Hash: analysis_cfb13333de3a4578
+Timestamp: 2025-10-30T11:05:47.509175
+        
+WARNING:  [IntakeAgent]: Received message with unrecognized schema digest: model:c89a56e64e8e1ccbd5548d0b05332d2a67a3878e151ea2e97c0d3e548c64dc61
+INFO:     [IntakeAgent]: Received chat from agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8: {"artifact_hint": "solana_transaction", "signature": "good_signature_456", "from_address": "3saFeH76kYv2tqeThzKdAdzsP5uVGkSSq1RAwepFQk3F", "to_address": "BKf7PZ6oM2y7rdn68Sq1ej1D3rsE9WVh6CaaG4Rf1N9T", "amount": 1.2, "token": "SOL", "timestamp": "2024-05-02T09:15:00Z", "block_height": 250123999}
+INFO:     [IntakeAgent]: Created ticket 76c40fa6-9b73-4147-a146-4f0b7f722fab for analysis
+INFO:     [AnalyzerAgent]: Received analysis request for ticket 76c40fa6-9b73-4147-a146-4f0b7f722fab
+INFO:     [AnalyzerAgent]: Routing artifact type solana_transaction for analysis
+INFO:     [AnalyzerAgent]: Analysis result verdict: safe
+INFO:     [AnalyzerAgent]: Attestation source: solana_analyzer
+ERROR:    [dispenser]: Failed to deliver message to agent1qgrw2c0kvte8tphwy2wymgusegdsgsn9mk826hks5pmndhv3l22z6vergj8 @ ['http://127.0.0.1:8006']: ['404: {"error": "not found"}']
+WARNING:  [IntakeAgent]: Received message with unrecognized schema digest: model:c89a56e64e8e1ccbd5548d0b05332d2a67a3878e151ea2e97c0d3e548c64dc61
+INFO:     [IntakeAgent]: Received analysis result: safe
+INFO:     [IntakeAgent]: Sending SignedReport for ticket 76c40fa6-9b73-4147-a146-4f0b7f722fab to RefereeAgent @ agent1qgz5l7x3x6ufunxs3a9ylsrrv4aavplxp9hlgjl9yw6ceswansft60r9chz
+INFO:     [RefereeAgent]: Verification: valid for ticket 76c40fa6-9b73-4147-a146-4f0b7f722fab
+INFO:     [IntakeAgent]: Forwarding SignedReport for ticket 76c40fa6-9b73-4147-a146-4f0b7f722fab to OnchainAgent @ agent1qdyryqc8txdfccr7fn87fv40lukc48hpcg0kfuzffl366c884sqvvk55evq
+INFO:     [OnchainAgent]: (stub) would write report analysis_60281d518d2d46b4 with verdict safe to chain
+INFO:     [IntakeAgent]: Analysis result: 
+🔍 Analysis Complete!
+
+Severity: LOW
+Verdict: safe
+Evidence: {'transaction': {'signature': 'good_signature_456', 'from_address': '3saFeH76kYv2tqeThzKdAdzsP5uVGkSSq1RAwepFQk3F', 'to_address': 'BKf7PZ6oM2y7rdn68Sq1ej1D3rsE9WVh6CaaG4Rf1N9T', 'amount': 1.2, 'token': 'SOL', 'timestamp': '2024-05-02T09:15:00Z', 'block_height': 250123999}, 'alerts': [], 'verdict': 'safe', 'severity': 'low'}
+
+Report Hash: analysis_60281d518d2d46b4
+Timestamp: 2025-10-30T11:05:58.185524
+        
+WARNING:  [IntakeAgent]: Received message with unrecognized schema digest: model:c89a56e64e8e1ccbd5548d0b05332d2a67a3878e151ea2e97c0d3e548c64dc61
