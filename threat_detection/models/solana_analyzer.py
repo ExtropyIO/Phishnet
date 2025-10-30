@@ -10,7 +10,18 @@ from typing import Dict, Any, List
 class SolanaAnalyzer:
     def __init__(self, rules_path=None):
         if rules_path is None:
-            rules_path = os.path.join(os.path.dirname(__file__), "solana_rules.json")
+            base_dir = os.path.dirname(__file__)
+            candidate_paths = [
+                os.path.join(base_dir, "solana_rules.json"),
+                os.path.join(os.path.dirname(base_dir), "solana_rules.json"),
+            ]
+            for path in candidate_paths:
+                if os.path.exists(path):
+                    rules_path = path
+                    break
+        if rules_path is None or not os.path.exists(rules_path):
+            raise FileNotFoundError("Solana analyzer rules file not found")
+
         with open(rules_path, "r") as f:
             self.rules = json.load(f)
 

@@ -1,34 +1,49 @@
 """
-OnchainAgent - Handles blockchain transactions for immutable logging
-Role: Submits report hashes to Solana blockchain, provides explorer links
-Team Member: Josh (Python agents and connecting them)
-
-DESCRIPTION:
-This agent handles blockchain transactions for immutable logging of analysis results.
-It submits report hashes to Solana blockchain for permanent record, provides explorer 
-links for users to verify on-chain transactions, and manages transaction confirmations.
-
-Key Responsibilities:
-- Submit report hashes to Solana blockchain for immutable logging
-- Handle transaction confirmations and blockchain interactions
-- Provide explorer links for transaction verification
-- Manage blockchain transaction workflow
-- Ensure permanent record of analysis results
-- Handle optional on-chain logging based on user choice
+OnchainAgent - posts immutable logs or actions on-chain (stub).
+Publishes public endpoint via shared bootstrap and exposes /onchain/health on :8080.
 """
 
-# TODO: Implement OnchainAgent functionality
-# - Solana blockchain integration
-# - Transaction submission and confirmation
-# - Explorer link generation
-# - Blockchain interaction management
+import os
+from uagents import Agent, Context
 
-from shared.health import start_health_server
+# from shared.agent_bootstrap import build_agent, start_sidecars, run_agent
 
-# Minimal placeholder agent
+try:
+    from shared.schemas.artifact_schema import SignedReport, ChatMessage, ChatResponse
+except ImportError:
+    import sys, pathlib
+    sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+    from shared.schemas.artifact_schema import SignedReport, ChatMessage, ChatResponse
+
+agent = Agent(
+         name="OnchainAgent",
+         seed="onchain-agent-seed",
+         port=8011,
+         endpoint=["http://127.0.0.1:8011/submit"]
+     )
+# start_sidecars()
+
+
+@agent.on_event("startup")
+async def startup(ctx: Context):
+    ctx.logger.info("OnchainAgent ready")
+    pb = os.getenv("PUBLIC_BASE_URL")
+    ctx.logger.info(f"Public endpoint: {pb.rstrip('/')+'/submit' if pb else '(unset)'}")
+
+
+@agent.on_message(model=SignedReport)
+async def handle_report(ctx: Context, sender: str, msg: SignedReport):
+    # TODO: push a minimal hash/log on-chain (Solana/EVM) via tee/onchain
+    ctx.logger.info(f"(stub) would write report {msg.report_hash} with verdict {msg.verdict} to chain")
+
+
+@agent.on_message(model=ChatMessage)
+async def hello(ctx: Context, sender: str, msg: ChatMessage):
+    await ctx.send(sender, ChatResponse(
+        response="Onchain agent is running. Send a SignedReport to persist proof on-chain.",
+        requires_action=False
+    ))
+
+
 if __name__ == "__main__":
-    start_health_server()
-    print("Onchain agent placeholder running — no logic yet.")
-    import time
-    while True:
-        time.sleep(60)
+    agent.run()
