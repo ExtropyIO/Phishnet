@@ -1,14 +1,80 @@
-
-
 import json
 import os
 import re
 from datetime import datetime
 from typing import Dict, Any, List
 
+EMBEDDED_SOLANA_RULES_JSON = r"""[
+  {
+    "id": "malicious_dev_wallet_1",
+    "address": "5Jfb3n8eW4JyQrKJktMNBFXnC1zx2YHjRSkzRrTT5QHh",
+    "type": "wallet",
+    "description": "Malicious developer wallet detected in previous incidents",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_dev_wallet_2",
+    "address": "ESSfP3aAcW6Z59ozut9Jkqy9btaX5YTHt25b3Vhs2hsf",
+    "type": "wallet",
+    "description": "Malicious developer wallet #2",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_dev_wallet_3",
+    "address": "GrXoxqM2a6QFKSBdZ9RLWJCBVTFvuuH8eCjjsLbjhpiR",
+    "type": "wallet",
+    "description": "Malicious developer wallet #3",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_validator_1",
+    "address": "4SKy65C9373k9WZnq2ViR7nq8eCu32TkLhoXq45MYQm6",
+    "type": "validator",
+    "description": "Malicious validator (known bad node)",
+    "severity": "high"
+  },
+  {
+    "id": "malicious_validator_2",
+    "address": "7Q79sw9Sb625PFzxTvRzhgYme8Jb6mzuTR1CaU3UfV1w",
+    "type": "validator",
+    "description": "Malicious validator (known bad node) #2",
+    "severity": "high"
+  },
+  {
+    "id": "zero_address",
+    "address": "11111111111111111111111111111111",
+    "type": "wallet",
+    "description": "Zero address (commonly used as null or burn address)",
+    "severity": "medium"
+  },
+  {
+    "id": "malicious_contract_scam_coin",
+    "address": "9mNjA6BizTwpvd4DS3o7BjwZ6aPM9DC2jLHS7JFGbonk",
+    "type": "contract",
+    "description": "Scam token contract (scam coin)",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_hacking_contract",
+    "address": "5HYjArGt81naevDdwMaEx8yeGNw9jYBSDJa8YavT9Mp4",
+    "type": "contract",
+    "description": "Hacking contract used in known exploit activity",
+    "severity": "critical"
+  },
+  {
+    "id": "malicious_extension_1",
+    "address": "5UMucMksJweA1AtgyxrK8DJeBXr3DQGEGRs5Kkq2pZjr",
+    "type": "extension",
+    "description": "Malicious browser/-wallet extension identifier",
+    "severity": "high"
+  }
+]"""
+
 
 class SolanaAnalyzer:
     def __init__(self, rules_path=None):
+        loaded_rules = None
+
         if rules_path is None:
             base_dir = os.path.dirname(__file__)
             candidate_paths = [
@@ -19,22 +85,25 @@ class SolanaAnalyzer:
                 if os.path.exists(path):
                     rules_path = path
                     break
-        if rules_path is None or not os.path.exists(rules_path):
-            raise FileNotFoundError("Solana analyzer rules file not found")
 
-        with open(rules_path, "r") as f:
-            self.rules = json.load(f)
+        if rules_path is not None:
+            try:
+                with open(rules_path, "r") as f:
+                    loaded_rules = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                loaded_rules = None
+
+        if loaded_rules is None:
+            loaded_rules = json.loads(EMBEDDED_SOLANA_RULES_JSON)
+
+        self.rules = loaded_rules
 
         # Index wallets and validators for quick lookup
         self.malicious_wallets = {r["address"]: r for r in self.rules if r["type"] == "wallet"}
         self.malicious_validators = {r["address"]: r for r in self.rules if r["type"] == "validator"}
 
     def analyze_transaction(self, tx):
-        """
-        Analyze a Solana transaction.
-        tx: SolanaTransaction Pydantic model
-        Returns a dict with alerts, verdict, severity
-        """
+    
         alerts = []
 
         # Check sender

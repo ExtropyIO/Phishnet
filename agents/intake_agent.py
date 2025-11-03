@@ -1,46 +1,139 @@
-"""
-IntakeAgent - uAgents Framework Implementation
-Receives user artifacts and initiates analysis workflow
-Uses proper uAgents communication patterns
-"""
-
 import os
 import uuid
 import json
 from datetime import datetime
 from typing import Dict, Any
-from uagents import Agent, Context, Model
+from uagents import Agent, Context, Model, Protocol
+from uagents_core.contrib.protocols.chat import (
+    ChatMessage as CPChatMessage,
+    ChatAcknowledgement as CPChatAcknowledgement,
+    TextContent as CPTextContent,
+    EndSessionContent as CPEndSessionContent,
+    StartSessionContent as CPStartSessionContent,
+    chat_protocol_spec,
+)
 import asyncio
 
-# Import schemas
-try:
-    from shared.schemas.artifact_schema import (
+from schema import (
         Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
         ChatMessage, ChatResponse, SolanaTransaction
-    )
-except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
-        ChatMessage, ChatResponse, SolanaTransaction
-    )
+)
 
-# Create agent
 intake_agent = Agent(
     name="IntakeAgent",
-    seed="intake-agent-seed",
-    port=8001,
-    endpoint=["http://127.0.0.1:8001/submit"]
+    seed="intake-agent-seed"
 )
+
+chat_proto = Protocol(spec=chat_protocol_spec)
+
+@chat_proto.on_message(CPChatMessage)
+async def handle_chat_protocol_message(ctx: Context, sender: str, msg: CPChatMessage):
+    """Handle chat protocol messages from Agentverse"""
+    ctx.logger.info(f"Received chat protocol message from {sender}")
+    
+    # Send acknowledgement
+    await ctx.send(sender, CPChatAcknowledgement(
+        timestamp=datetime.utcnow(),
+        acknowledged_msg_id=getattr(msg, "msg_id", None)
+    ))
+    
+    # Extract text content from message
+    text_parts = []
+    for item in (msg.content or []):
+        if isinstance(item, CPStartSessionContent):
+            ctx.logger.info(f"Session started with {sender}")
+        elif isinstance(item, CPTextContent):
+            text_parts.append(item.text)
+        elif isinstance(item, CPEndSessionContent):
+            ctx.logger.info(f"Session ended with {sender}")
+    
+    raw_text = " ".join(text_parts).strip()
+    
+    if not raw_text:
+        await ctx.send(sender, CPChatMessage(
+            timestamp=datetime.utcnow(),
+            msg_id=uuid.uuid4(),
+            content=[CPTextContent(type="text", text="Please provide a URL or Solana transaction JSON for analysis.")]
+        ))
+        return
+    
+    # Detect artifact type
+    lower_text = raw_text.lower()
+    artifact_type = None
+    if 'url' in lower_text or lower_text.startswith('http'):
+        artifact_type = ArtifactType.URL
+    elif 'solana' in lower_text or 'transaction' in lower_text or raw_text.strip().startswith('{'):
+        artifact_type = ArtifactType.SOLANA_TRANSACTION
+    
+    if not artifact_type:
+        await ctx.send(sender, CPChatMessage(
+            timestamp=datetime.utcnow(),
+            msg_id=uuid.uuid4(),
+            content=[CPTextContent(type="text", text="I can analyze URLs and Solana transactions. Please send a URL or Solana transaction JSON.")]
+        ))
+        return
+    
+    # Parse Solana transaction if needed
+    solana_tx = None
+    if artifact_type == ArtifactType.SOLANA_TRANSACTION:
+        try:
+            tx_payload = json.loads(raw_text)
+            solana_tx = SolanaTransaction(**tx_payload)
+        except Exception as exc:
+            ctx.logger.warning(f"Failed to parse Solana transaction: {exc}")
+    
+    # Create artifact and ticket
+    artifact = Artifact(
+        type=artifact_type,
+        content=raw_text,
+        user_id=None,
+        solana_tx=solana_tx
+    )
+    ticket = core.receive_artifact(artifact)
+    analysis_request = core.package_for_analysis(ticket)
+    
+    # Track chat sender for this ticket
+    IntakeAgentCore.chat_ticket_senders[ticket.ticket_id] = sender
+    
+    ctx.logger.info(f"Created ticket {ticket.ticket_id} for chat protocol request")
+    
+    # Send to AnalyzerAgent
+    if core.analyzer_address:
+        try:
+            await ctx.send(core.analyzer_address, analysis_request)
+            await ctx.send(sender, CPChatMessage(
+                timestamp=datetime.utcnow(),
+                msg_id=uuid.uuid4(),
+                content=[CPTextContent(type="text", text=f"Received. Ticket ID: {ticket.ticket_id}. Running analysis...")]
+            ))
+        except Exception as e:
+            ctx.logger.error(f"Failed to send to AnalyzerAgent: {e}")
+            await ctx.send(sender, CPChatMessage(
+                timestamp=datetime.utcnow(),
+                msg_id=uuid.uuid4(),
+                content=[CPTextContent(type="text", text=f"Received. Ticket ID: {ticket.ticket_id}. Analyzer unavailable.")]
+            ))
+    else:
+        await ctx.send(sender, CPChatMessage(
+            timestamp=datetime.utcnow(),
+            msg_id=uuid.uuid4(),
+            content=[CPTextContent(type="text", text="Analyzer not configured.")]
+        ))
+
+# Handle chat protocol acknowledgements
+@chat_proto.on_message(CPChatAcknowledgement)
+async def handle_chat_protocol_ack(ctx: Context, sender: str, msg: CPChatAcknowledgement):
+    ctx.logger.info(f"Received chat protocol acknowledgement from {sender} for message: {getattr(msg, 'acknowledged_msg_id', None)}")
+
 
 # Core agent logic
 class IntakeAgentCore:
-    def __init__(self):
-        self.tickets: Dict[str, AnalysisTicket] = {}
-        self.analyzer_address = os.getenv("ANALYZER_ADDRESS")
-        self.referee_address = os.getenv("REFEREE_ADDRESS")
-        self.onchain_address = os.getenv("ONCHAIN_ADDRESS")
+
+    analyzer_address = "agent1qft9yl88cvl9nad2jst2pj7z3yzrgctmgauzky7vqjmu6mwy3k0xsee4aw2"
+    referee_address = "agent1q2ewhrl4f4qhhsyjt6wx36rz4xghv3wfpp9x9rt5fkrjqh5pn7sg736dz5g"
+    onchain_address = "agent1qgt3szegqq32c6x2q2ne5ts5j3er5zj0z2y3nk2vwypej9zuqekyke20t02"
+    tickets: Dict[str, AnalysisTicket] = {}
+    chat_ticket_senders: Dict[str, str] = {}  # Map ticket_id -> chat protocol sender address
     
     def receive_artifact(self, artifact: Artifact) -> AnalysisTicket:
         """Receive and validate artifact from user"""
@@ -51,7 +144,7 @@ class IntakeAgentCore:
             timestamp=datetime.now().isoformat(),
             status="received"
         )
-        self.tickets[ticket_id] = ticket
+        IntakeAgentCore.tickets[ticket_id] = ticket
         return ticket
     
     def package_for_analysis(self, ticket: AnalysisTicket) -> AnalysisRequest:
@@ -204,9 +297,24 @@ Evidence: {msg.evidence}
 
 Report Hash: {msg.report_hash}
 Timestamp: {msg.timestamp}
-        """
+        f"""
     # Log and send to user
     ctx.logger.info(f"Analysis result: {verdict_message}")
+    
+    # If request came from chat protocol, send response via chat protocol
+    ticket_id = getattr(msg, 'ticket_id', None)
+    if ticket_id and ticket_id in IntakeAgentCore.chat_ticket_senders:
+        chat_sender = IntakeAgentCore.chat_ticket_senders.pop(ticket_id, None)
+        if chat_sender:
+            summary = f"Analysis Complete! Verdict: {msg.verdict.upper()} | Severity: {msg.severity.upper()}\nReport Hash: {msg.report_hash}"
+            await ctx.send(chat_sender, CPChatMessage(
+                timestamp=datetime.utcnow(),
+                msg_id=uuid.uuid4(),
+                content=[CPTextContent(type="text", text=summary), CPEndSessionContent(type="end-session")]
+            ))
+
+# Include chat protocol and publish manifest to Agentverse
+intake_agent.include(chat_proto, publish_manifest=True)
 
 if __name__ == "__main__":
     intake_agent.run()

@@ -1,54 +1,71 @@
-"""
-AnalyzerAgent - uAgents Framework Implementation
-Calls Go service for TEE analysis and returns signed reports
-Uses proper uAgents communication patterns
-"""
-
-import os
 import uuid
-import aiohttp
-import sys
 import json
+import os
+import sys
 from datetime import datetime
-from typing import Dict, Any
 from uagents import Agent, Context, Model
 
-# Add threat detection to path
-threat_detection_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'threat_detection')
-sys.path.append(os.path.join(threat_detection_path, 'models'))
-
-# Import URL analyzer (now uses absolute paths internally)
 from url_analyzer import URLAnalyzer
 from solana_analyzer import SolanaAnalyzer
 
-# Import schemas
-try:
-    from shared.schemas.artifact_schema import (
+if 'url_analyzer' in sys.modules:
+    url_mod = sys.modules['url_analyzer']
+    url_file_path = os.path.abspath(os.path.join(os.getcwd(), 'url_analyzer.py'))
+    url_mod.__dict__['__file__'] = url_file_path
+    setattr(url_mod, '__file__', url_file_path)
+
+if 'solana_analyzer' in sys.modules:
+    solana_mod = sys.modules['solana_analyzer']
+    solana_file_path = os.path.abspath(os.path.join(os.getcwd(), 'solana_analyzer.py'))
+    solana_mod.__dict__['__file__'] = solana_file_path
+    setattr(solana_mod, '__file__', solana_file_path)
+
+from schema import (
         Artifact, ArtifactType, AnalysisRequest, SignedReport, SolanaTransaction
-    )
-except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from shared.schemas.artifact_schema import (
-        Artifact, ArtifactType, AnalysisRequest, SignedReport, SolanaTransaction
-    )
+)
 
 # Create agent
 analyzer_agent = Agent(
     name="AnalyzerAgent",
     seed="analyzer-agent-seed",
-    port=8002,
-    endpoint=["http://127.0.0.1:8002/submit"]
 )
+
+url_analyzer = None
+solana_analyzer = None
+_analyzer_error = None
+
+def get_url_analyzer():
+    global url_analyzer, _analyzer_error
+    if url_analyzer is None and _analyzer_error is None:
+        try:
+            url_analyzer = URLAnalyzer(rules_path=None)
+        except (NameError, FileNotFoundError) as e:
+            _analyzer_error = f"URLAnalyzer init failed: {e}. Check rules.json location."
+            raise RuntimeError(_analyzer_error)
+        except Exception as e:
+            _analyzer_error = str(e)
+            raise RuntimeError(f"Failed to initialize URLAnalyzer: {e}")
+    if _analyzer_error:
+        raise RuntimeError(f"URLAnalyzer initialization error: {_analyzer_error}")
+    return url_analyzer
+
+def get_solana_analyzer():
+    global solana_analyzer, _analyzer_error
+    if solana_analyzer is None and _analyzer_error is None:
+        try:
+            solana_analyzer = SolanaAnalyzer(rules_path=None)
+        except (NameError, FileNotFoundError) as e:
+            _analyzer_error = f"SolanaAnalyzer init failed: {e}. Check solana_rules.json location."
+            raise RuntimeError(_analyzer_error)
+        except Exception as e:
+            _analyzer_error = str(e)
+            raise RuntimeError(f"Failed to initialize SolanaAnalyzer: {e}")
+    if _analyzer_error:
+        raise RuntimeError(f"SolanaAnalyzer initialization error: {_analyzer_error}")
+    return solana_analyzer
 
 # Threat detection analysis logic
 class AnalyzerAgentCore:
-    def __init__(self):
-        self.go_service_url = os.getenv("GO_ANALYZER_URL", "http://localhost:8080")
-        self.timeout = 30  # seconds
-        # Initialize analyzer instances
-        self.url_analyzer = URLAnalyzer()
-        self.solana_analyzer = SolanaAnalyzer()
     
     async def analyze_request(self, req: AnalysisRequest) -> SignedReport:
         """Route analysis request based on artifact type"""
@@ -70,7 +87,7 @@ class AnalyzerAgentCore:
         else:
             url_to_analyze = content
 
-        analysis_result = self.url_analyzer.analyze_url(url_to_analyze)
+        analysis_result = get_url_analyzer().analyze_url(url_to_analyze)
 
         return SignedReport(
             report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
@@ -97,7 +114,7 @@ class AnalyzerAgentCore:
             except Exception as exc:
                 raise ValueError("Invalid Solana transaction payload") from exc
 
-        analysis_result = self.solana_analyzer.analyze_transaction(tx_model)
+        analysis_result = get_solana_analyzer().analyze_transaction(tx_model)
 
         return SignedReport(
             report_hash=f"analysis_{uuid.uuid4().hex[:16]}",
@@ -115,8 +132,9 @@ core = AnalyzerAgentCore()
 @analyzer_agent.on_event("startup")
 async def startup(ctx: Context):
     """Agent startup handler"""
-    ctx.logger.info("AnalyzerAgent started - pass-through to URL analyzer")
-    ctx.logger.info(f"Agent address: {analyzer_agent.address}")
+    # Don't initialize analyzers at startup - initialize on first use to avoid __file__ issues
+    ctx.logger.info("AnalyzerAgent started - analyzers will initialize on first request")
+    ctx.logger.info(f"Agent address: {analyzer_agent.address}")    
 
 @analyzer_agent.on_message(model=AnalysisRequest)
 async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisRequest):

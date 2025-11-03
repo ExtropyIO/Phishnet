@@ -1,34 +1,16 @@
-"""
-OnchainAgent - posts immutable logs or actions on-chain (stub).
-Publishes public endpoint via shared bootstrap and exposes /onchain/health on :8080.
-"""
-
 import os
 from uagents import Agent, Context
 
-# from shared.agent_bootstrap import build_agent, start_sidecars, run_agent
-
-try:
-    from shared.schemas.artifact_schema import SignedReport, ChatMessage, ChatResponse
-except ImportError:
-    import sys, pathlib
-    sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
-    from shared.schemas.artifact_schema import SignedReport, ChatMessage, ChatResponse
+from schema import SignedReport, ChatMessage, ChatResponse
 
 agent = Agent(
          name="OnchainAgent",
-         seed="onchain-agent-seed",
-         port=8011,
-         endpoint=["http://127.0.0.1:8011/submit"]
+         seed="onchain-agent-seed"
      )
-# start_sidecars()
-
 
 @agent.on_event("startup")
 async def startup(ctx: Context):
     ctx.logger.info("OnchainAgent ready")
-    pb = os.getenv("PUBLIC_BASE_URL")
-    ctx.logger.info(f"Public endpoint: {pb.rstrip('/')+'/submit' if pb else '(unset)'}")
 
 
 @agent.on_message(model=SignedReport)
