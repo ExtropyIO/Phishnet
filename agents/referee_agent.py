@@ -18,14 +18,34 @@ async def startup(ctx: Context):
 
 @agent.on_message(model=SignedReport)
 async def verify_report(ctx: Context, sender: str, msg: SignedReport):
-    ok = _verify_stub(msg)
-    ctx.logger.info(f"Verification: {'valid' if ok else 'invalid'} for ticket {msg.ticket_id}")
+    ctx.logger.info(f"Referee received SignedReport from {sender} for ticket {msg.ticket_id}")
 
-    # For demo, reply back to sender (could be IntakeAgent) with a short verdict message
-    await ctx.send(sender, ChatResponse(
-        response=f"Referee verification for {msg.ticket_id}: {'VALID' if ok else 'INVALID'} signature; verdict={msg.verdict}",
-        requires_action=False
-    ))
+    ok = _verify_stub(msg)
+    verification_status = 'VALID' if ok else 'INVALID'
+    ctx.logger.info(f"Verification: {verification_status} for ticket {msg.ticket_id}")
+
+    verified_evidence = msg.evidence.copy() if isinstance(msg.evidence, dict) else {}
+    verified_evidence['referee_verification'] = {
+        'status': verification_status,
+        'verified_by': 'referee_agent',
+        'signature_valid': ok
+    }
+    
+    verified_report = SignedReport(
+        report_hash=msg.report_hash,
+        attestation=f"{msg.attestation}_verified",
+        signature=msg.signature,
+        verdict=msg.verdict,
+        severity=msg.severity,
+        evidence=verified_evidence,
+        timestamp=msg.timestamp,
+        ticket_id=msg.ticket_id,
+        chat_sender=msg.chat_sender
+    )
+    
+    ctx.logger.info(f"Sending verified SignedReport back to {sender}")
+    await ctx.send(sender, verified_report)
+    ctx.logger.info(f"Verified report sent to {sender}")
 
 @agent.on_message(model=ChatMessage)
 async def hello(ctx: Context, sender: str, msg: ChatMessage):

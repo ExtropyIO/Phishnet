@@ -97,7 +97,6 @@ async def handle_chat_protocol_message(ctx: Context, sender: str, msg: CPChatMes
     ctx.logger.info(f"Created ticket {ticket.ticket_id} for chat protocol request")
     ctx.logger.info(f"Sending analysis request with chat_sender: {sender}")
 
-    # Send to AnalyzerAgent
     if core.analyzer_address:
         try:
             await ctx.send(core.analyzer_address, analysis_request)
@@ -120,13 +119,15 @@ async def handle_chat_protocol_message(ctx: Context, sender: str, msg: CPChatMes
             content=[CPTextContent(type="text", text="Analyzer not configured.")]
         ))
 
-# Handle chat protocol acknowledgements
 @chat_proto.on_message(CPChatAcknowledgement)
 async def handle_chat_protocol_ack(ctx: Context, sender: str, msg: CPChatAcknowledgement):
     ctx.logger.info(f"Received chat protocol acknowledgement from {sender} for message: {getattr(msg, 'acknowledged_msg_id', None)}")
 
 
 # Core agent logic
+
+# Global storage for original reports (for reference if needed)
+_original_reports: Dict[str, SignedReport] = {}
 
 class IntakeAgentCore:
 
@@ -159,8 +160,6 @@ class IntakeAgentCore:
 
 core = IntakeAgentCore()
 
-# ChatMessage and ChatResponse are imported from shared schemas
-
 @intake_agent.on_event("startup")
 async def startup(ctx: Context):
     """Agent startup handler"""
@@ -178,6 +177,11 @@ async def startup(ctx: Context):
         ctx.logger.info(f"OnchainAgent address: {core.onchain_address}")
     else:
         ctx.logger.warning("ONCHAIN_ADDRESS not set - onchain reporting disabled!")
+
+@intake_agent.on_message(model=ChatResponse)
+async def handle_chat_response(ctx: Context, sender: str, msg: ChatResponse):
+    """Handle ChatResponse messages (legacy compatibility)"""
+    ctx.logger.info(f"Received ChatResponse from {sender}: {msg.response}")
 
 @intake_agent.on_message(model=ChatMessage)
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
@@ -211,18 +215,14 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
             solana_tx=solana_tx
         )
         
-        # Process artifact
         ticket = core.receive_artifact(artifact)
         analysis_request = core.package_for_analysis(ticket, sender)
 
         ctx.logger.info(f"Created ticket {ticket.ticket_id} for analysis")
 
-        # Send to AnalyzerAgent if available
         if core.analyzer_address:
             try:
-                # Send analysis request to AnalyzerAgent
                 await ctx.send(core.analyzer_address, analysis_request)
-                # ctx.logger.info(f"Sent analysis request to AnalyzerAgent for ticket {ticket.ticket_id}")
                 
                 response = ChatResponse(
                     response=f"✅ Received your {artifact_type} for analysis. Ticket ID: {ticket.ticket_id}\n\n🔍 Sending to AnalyzerAgent for processing...",
@@ -252,48 +252,112 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
 
 @intake_agent.on_message(model=SignedReport)
 async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
-    ctx.logger.info(f"[{intake_agent.address}] Received analysis result: {msg.verdict} from {sender}")
+    ticket_id = getattr(msg, 'ticket_id', 'unknown')
+    ctx.logger.info(f"Received SignedReport: {msg.verdict} from {sender} (attestation: {msg.attestation}) for ticket {ticket_id}")
+    
+    # Check if this is a verified report coming back from referee
+    is_verified = msg.attestation and '_verified' in msg.attestation
+    has_referee_verification = (
+        isinstance(msg.evidence, dict) and 
+        'referee_verification' in msg.evidence
+    )
+    
+    if is_verified or has_referee_verification:
+        # This is the verified report coming back from referee
+        ctx.logger.info(f"Received VERIFIED report from referee for ticket {ticket_id}")
+        
+        # Extract verification status from the verified report
+        verification_status = "UNKNOWN"
+        if isinstance(msg.evidence, dict) and 'referee_verification' in msg.evidence:
+            verification_status = msg.evidence['referee_verification']['status']
+        
+        final_message = f"""🔍 Analysis Complete!
 
-    # Forwarding to referee/onchain temporarily disabled while debugging runtime error
-    verdict_message = f"""
-🔍 Analysis Complete!
+✅ Referee Verification: {verification_status}
+
+Verdict: {msg.verdict.upper()}
 
 Severity: {msg.severity.upper()}
-Verdict: {msg.verdict}
-Evidence: {msg.evidence}
 
 Report Hash: {msg.report_hash}
-Timestamp: {msg.timestamp}
-f"""
-    # Log and send to user
-    ctx.logger.info(f"Analysis result: {verdict_message}")
 
-    # Send response back to the original chat sender (now included in SignedReport)
-    chat_sender = getattr(msg, 'chat_sender', None)
-    if chat_sender:
-        summary = (
-            "\n".join([
-                "🔍 Analysis Complete!",
-                f"Verdict: {msg.verdict.upper()}",
-                f"Severity: {msg.severity.upper()}",
-                f"Report Hash: {msg.report_hash}",
-            ])
-        )
-
-        ctx.logger.info(f"Sending analysis result back to chat sender: {chat_sender}")
-
-        try:
-            await ctx.send(chat_sender, CPChatMessage(
-                timestamp=datetime.utcnow(),
-                msg_id=uuid.uuid4(),
-                content=[CPTextContent(type="text", text=summary), CPEndSessionContent(type="end-session")]
-            ))
-        except Exception as exc:
-            ctx.logger.error(f"Failed to send analysis result to chat sender {chat_sender}: {exc}")
+Attestation: {msg.attestation}"""
+        
+        # Send final response to user
+        chat_sender = getattr(msg, 'chat_sender', None)
+        if chat_sender:
+            try:
+                await ctx.send(chat_sender, CPChatMessage(
+                    timestamp=datetime.utcnow(),
+                    msg_id=uuid.uuid4(),
+                    content=[CPTextContent(type="text", text=final_message), CPEndSessionContent(type="end-session")]
+                ))
+                ctx.logger.info(f"Final verified verdict sent to user")
+            except Exception as exc:
+                ctx.logger.error(f"Failed to send to user: {exc}")
+        else:
+            ctx.logger.warning(f"No chat_sender found in verified report")
+        
+        # Forward verified report to OnchainAgent
+        if core.onchain_address:
+            try:
+                await ctx.send(core.onchain_address, msg)
+                ctx.logger.info(f"Forwarded to OnchainAgent")
+            except Exception as exc:
+                ctx.logger.error(f"Failed to forward to OnchainAgent: {exc}")
+        
+        _original_reports.pop(ticket_id, None)
+        return
+        
     else:
-        ctx.logger.warning(f"No chat_sender found in SignedReport for ticket {getattr(msg, 'ticket_id', 'unknown')}")
+        ctx.logger.info(f"Received initial analysis from analyzer for ticket {ticket_id}")
+        
+        _original_reports[ticket_id] = msg
+        
+        if core.referee_address:
+            try:
+                ctx.logger.info(f"Forwarding to Referee for verification...")
+                
+                await ctx.send(core.referee_address, msg)
+                ctx.logger.info(f"Sent to referee, verified report will arrive separately")
+                
+                return
+                    
+            except Exception as exc:
+                ctx.logger.error(f"Referee verification error: {exc}")
+        
+        final_message = f"""🔍 Analysis Complete!
 
-# Include chat protocol and publish manifest to Agentverse
+⚠️ No Referee Verification
+
+Verdict: {msg.verdict.upper()}
+
+Severity: {msg.severity.upper()}
+
+Report Hash: {msg.report_hash}"""
+        
+        ctx.logger.info(f"Sending unverified verdict to user...")
+        
+        chat_sender = getattr(msg, 'chat_sender', None)
+        if chat_sender:
+            try:
+                await ctx.send(chat_sender, CPChatMessage(
+                    timestamp=datetime.utcnow(),
+                    msg_id=uuid.uuid4(),
+                    content=[CPTextContent(type="text", text=final_message), CPEndSessionContent(type="end-session")]
+                ))
+                ctx.logger.info(f"Unverified verdict sent to user")
+            except Exception as exc:
+                ctx.logger.error(f"Failed to send to user: {exc}")
+        
+        if core.onchain_address:
+            try:
+                await ctx.send(core.onchain_address, msg)
+            except Exception as exc:
+                ctx.logger.error(f"Failed to forward to OnchainAgent: {exc}")
+        
+        _original_reports.pop(ticket_id, None)
+
 intake_agent.include(chat_proto, publish_manifest=True)
 
 if __name__ == "__main__":
