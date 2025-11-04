@@ -16,7 +16,7 @@ import asyncio
 
 from schema import (
         Artifact, ArtifactType, AnalysisTicket, AnalysisRequest, SignedReport,
-        ChatMessage, ChatResponse, SolanaTransaction
+        ChatMessage, ChatResponse, SolanaTransaction, LogResponse
 )
 
 intake_agent = Agent(
@@ -126,7 +126,7 @@ async def handle_chat_protocol_ack(ctx: Context, sender: str, msg: CPChatAcknowl
 
 # Core agent logic
 
-# Global storage for original reports (for reference if needed)
+# Global storage for original reports (minimal state management)
 _original_reports: Dict[str, SignedReport] = {}
 
 class IntakeAgentCore:
@@ -182,6 +182,17 @@ async def startup(ctx: Context):
 async def handle_chat_response(ctx: Context, sender: str, msg: ChatResponse):
     """Handle ChatResponse messages (legacy compatibility)"""
     ctx.logger.info(f"Received ChatResponse from {sender}: {msg.response}")
+
+@intake_agent.on_message(model=LogResponse)
+async def handle_onchain_log(ctx: Context, sender: str, msg: LogResponse):
+    """Handle blockchain transaction confirmation from OnchainAgent"""
+    ctx.logger.info(f"Received LogResponse from {sender}: {msg.tx_signature}")
+    
+    # Store the log response - we'll match it to a ticket when sending final response
+    # For now, just log it as the onchain agent responds asynchronously
+    ctx.logger.info(f"Blockchain TX: {msg.tx_signature}")
+    ctx.logger.info(f"Explorer: {msg.explorer_url}")
+    ctx.logger.info(f"Confirmed: {msg.confirmed}")
 
 @intake_agent.on_message(model=ChatMessage)
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
