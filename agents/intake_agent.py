@@ -272,8 +272,9 @@ async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
             verification_status = msg.evidence['referee_verification']['status']
         
         final_message = f"""🔍 Analysis Complete!
+        
 
-✅ Referee Verification: {verification_status}
+Referee Verification: {verification_status}
 
 Verdict: {msg.verdict.upper()}
 
