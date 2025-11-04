@@ -64,6 +64,7 @@ class AnalysisRequest(BaseModel):
     artifact: Artifact
     nonce: str
     session_id: str
+    chat_sender: Optional[str] = None  # Original chat protocol sender
 
 class SignedReport(BaseModel):
     """Signed report from TEE analysis"""
@@ -75,6 +76,7 @@ class SignedReport(BaseModel):
     evidence: Dict[str, Any]
     timestamp: str
     ticket_id: Optional[str] = None  # Track back to original request
+    chat_sender: Optional[str] = None  # Original chat protocol sender for responses
 
 class VerifyRequest(BaseModel):
     """Request to verify TEE attestation"""

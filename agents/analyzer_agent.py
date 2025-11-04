@@ -72,13 +72,13 @@ class AnalyzerAgentCore:
         artifact = req.artifact
 
         if artifact.type == ArtifactType.URL:
-            return self._analyze_url(artifact.content, req.ticket_id)
+            return self._analyze_url(artifact.content, req.ticket_id, req.chat_sender)
         if artifact.type == ArtifactType.SOLANA_TRANSACTION:
-            return self._analyze_solana(artifact, req.ticket_id)
+            return self._analyze_solana(artifact, req.ticket_id, req.chat_sender)
 
         raise ValueError(f"Unsupported artifact type: {artifact.type}")
 
-    def _analyze_url(self, content: str, ticket_id: str) -> SignedReport:
+    def _analyze_url(self, content: str, ticket_id: str, chat_sender: str = None) -> SignedReport:
         import re
 
         url_match = re.search(r'https?://[^\s]+', content)
@@ -97,10 +97,11 @@ class AnalyzerAgentCore:
             severity=analysis_result.get("severity", "low"),
             evidence=analysis_result,
             timestamp=datetime.now().isoformat(),
-            ticket_id=ticket_id
+            ticket_id=ticket_id,
+            chat_sender=chat_sender
         )
 
-    def _analyze_solana(self, artifact: Artifact, ticket_id: str) -> SignedReport:
+    def _analyze_solana(self, artifact: Artifact, ticket_id: str, chat_sender: str = None) -> SignedReport:
         tx_model = artifact.solana_tx
 
         if tx_model is None:
@@ -124,7 +125,8 @@ class AnalyzerAgentCore:
             severity=analysis_result.get("severity", "low"),
             evidence=analysis_result,
             timestamp=datetime.now().isoformat(),
-            ticket_id=ticket_id
+            ticket_id=ticket_id,
+            chat_sender=chat_sender
         )
 
 core = AnalyzerAgentCore()
@@ -154,7 +156,8 @@ async def handle_analysis_request(ctx: Context, sender: str, msg: AnalysisReques
             severity="critical",
             evidence={"error": str(exc)},
             timestamp=datetime.now().isoformat(),
-            ticket_id=msg.ticket_id
+            ticket_id=msg.ticket_id,
+            chat_sender=msg.chat_sender
         )
         await ctx.send(sender, error_report)
         return

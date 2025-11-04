@@ -90,13 +90,13 @@ async def handle_chat_protocol_message(ctx: Context, sender: str, msg: CPChatMes
         solana_tx=solana_tx
     )
     ticket = core.receive_artifact(artifact)
-    analysis_request = core.package_for_analysis(ticket)
-    
-    # Track chat sender for this ticket
-    IntakeAgentCore.chat_ticket_senders[ticket.ticket_id] = sender
-    
+
+    # Include chat sender in the analysis request
+    analysis_request = core.package_for_analysis(ticket, sender)
+
     ctx.logger.info(f"Created ticket {ticket.ticket_id} for chat protocol request")
-    
+    ctx.logger.info(f"Sending analysis request with chat_sender: {sender}")
+
     # Send to AnalyzerAgent
     if core.analyzer_address:
         try:
@@ -127,13 +127,13 @@ async def handle_chat_protocol_ack(ctx: Context, sender: str, msg: CPChatAcknowl
 
 
 # Core agent logic
+
 class IntakeAgentCore:
 
     analyzer_address = "agent1qft9yl88cvl9nad2jst2pj7z3yzrgctmgauzky7vqjmu6mwy3k0xsee4aw2"
     referee_address = "agent1q2ewhrl4f4qhhsyjt6wx36rz4xghv3wfpp9x9rt5fkrjqh5pn7sg736dz5g"
     onchain_address = "agent1qgt3szegqq32c6x2q2ne5ts5j3er5zj0z2y3nk2vwypej9zuqekyke20t02"
     tickets: Dict[str, AnalysisTicket] = {}
-    chat_ticket_senders: Dict[str, str] = {}  # Map ticket_id -> chat protocol sender address
     
     def receive_artifact(self, artifact: Artifact) -> AnalysisTicket:
         """Receive and validate artifact from user"""
@@ -147,13 +147,14 @@ class IntakeAgentCore:
         IntakeAgentCore.tickets[ticket_id] = ticket
         return ticket
     
-    def package_for_analysis(self, ticket: AnalysisTicket) -> AnalysisRequest:
+    def package_for_analysis(self, ticket: AnalysisTicket, chat_sender: str = None) -> AnalysisRequest:
         """Package artifact for TEE analysis"""
         return AnalysisRequest(
             ticket_id=ticket.ticket_id,
             artifact=ticket.artifact,
             nonce="",  # Will be filled by AnalyzerAgent
-            session_id=""
+            session_id="",
+            chat_sender=chat_sender  # Pass through the chat sender
         )
 
 core = IntakeAgentCore()
@@ -212,10 +213,10 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
         
         # Process artifact
         ticket = core.receive_artifact(artifact)
-        analysis_request = core.package_for_analysis(ticket)
-        
+        analysis_request = core.package_for_analysis(ticket, sender)
+
         ctx.logger.info(f"Created ticket {ticket.ticket_id} for analysis")
-        
+
         # Send to AnalyzerAgent if available
         if core.analyzer_address:
             try:
@@ -251,44 +252,10 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage):
 
 @intake_agent.on_message(model=SignedReport)
 async def handle_analysis_result(ctx: Context, sender: str, msg: SignedReport):
-    ctx.logger.info(f"Received analysis result: {msg.verdict}")
+    ctx.logger.info(f"[{intake_agent.address}] Received analysis result: {msg.verdict} from {sender}")
 
-    # Forward to referee if configured, wait for verification
-    referee_verdict = None
-    if getattr(core, "referee_address", None):
-        try:
-            # Send the signed report to referee agent for verification
-            ctx.logger.info(f"Sending SignedReport for ticket {getattr(msg, 'ticket_id', '')} to RefereeAgent @ {core.referee_address}")
-            await ctx.send(core.referee_address, msg)
-
-            # Wait for a ChatResponse (verified verdict)
-            @intake_agent.on_message(model=ChatResponse)
-            async def receive_verification(ctx2: Context, sender2: str, verification_resp: ChatResponse):
-                nonlocal referee_verdict
-                referee_verdict = verification_resp.response
-                ctx2.logger.info(f"Received referee verdict: {referee_verdict}")
-
-            # Wait up to ~5 seconds (rudimentary coroutine yield; in production, use a pub/sub/push or state channel)
-            for _ in range(25):
-                await asyncio.sleep(0.2)
-                if referee_verdict:
-                    break
-        except Exception as exc:
-            ctx.logger.error(f"Error during referee signature verification: {exc}")
-
-    # Send to OnchainAgent after referee (regardless of referee outcome)
-    if getattr(core, "onchain_address", None):
-        try:
-            ctx.logger.info(f"Forwarding SignedReport for ticket {getattr(msg, 'ticket_id', '')} to OnchainAgent @ {core.onchain_address}")
-            await ctx.send(core.onchain_address, msg)
-        except Exception as exc:
-            ctx.logger.error(f"Failed to forward SignedReport to OnchainAgent: {exc}")
-
-    # Present verdict to user
-    if referee_verdict:
-        verdict_message = f"\n🔍 Analysis Complete!\nReferee says: {referee_verdict}"
-    else:
-        verdict_message = f"""
+    # Forwarding to referee/onchain temporarily disabled while debugging runtime error
+    verdict_message = f"""
 🔍 Analysis Complete!
 
 Severity: {msg.severity.upper()}
@@ -297,21 +264,34 @@ Evidence: {msg.evidence}
 
 Report Hash: {msg.report_hash}
 Timestamp: {msg.timestamp}
-        f"""
+f"""
     # Log and send to user
     ctx.logger.info(f"Analysis result: {verdict_message}")
-    
-    # If request came from chat protocol, send response via chat protocol
-    ticket_id = getattr(msg, 'ticket_id', None)
-    if ticket_id and ticket_id in IntakeAgentCore.chat_ticket_senders:
-        chat_sender = IntakeAgentCore.chat_ticket_senders.pop(ticket_id, None)
-        if chat_sender:
-            summary = f"Analysis Complete! Verdict: {msg.verdict.upper()} | Severity: {msg.severity.upper()}\nReport Hash: {msg.report_hash}"
+
+    # Send response back to the original chat sender (now included in SignedReport)
+    chat_sender = getattr(msg, 'chat_sender', None)
+    if chat_sender:
+        summary = (
+            "\n".join([
+                "🔍 Analysis Complete!",
+                f"Verdict: {msg.verdict.upper()}",
+                f"Severity: {msg.severity.upper()}",
+                f"Report Hash: {msg.report_hash}",
+            ])
+        )
+
+        ctx.logger.info(f"Sending analysis result back to chat sender: {chat_sender}")
+
+        try:
             await ctx.send(chat_sender, CPChatMessage(
                 timestamp=datetime.utcnow(),
                 msg_id=uuid.uuid4(),
                 content=[CPTextContent(type="text", text=summary), CPEndSessionContent(type="end-session")]
             ))
+        except Exception as exc:
+            ctx.logger.error(f"Failed to send analysis result to chat sender {chat_sender}: {exc}")
+    else:
+        ctx.logger.warning(f"No chat_sender found in SignedReport for ticket {getattr(msg, 'ticket_id', 'unknown')}")
 
 # Include chat protocol and publish manifest to Agentverse
 intake_agent.include(chat_proto, publish_manifest=True)
