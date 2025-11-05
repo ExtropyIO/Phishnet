@@ -1,0 +1,12 @@
+{
+  "txSignature": "BM3caSxB2rA9whhxeBMZ2RCPjsNyYemDAdGUoE4PHSQ77nmLPufYVQdSACboxwN9dNn3n7nKcAjtUkmwTmv3jRN",
+  "payer": "E5GAPTRyqx4pHHNFamJeU4GQFw3MqHpGhhwqgckAnRxD",
+  "memo": {
+    "v": 1,
+    "scan_id": "scan-1761830374",
+    "verdict": 2,
+    "url_sha256": "c4e6fc1499eb680f1d937c0cde80436ddd287d891b059afc28f837c094460fc5",
+    "att_sha256": "28cf38bc5041f1a5dfd21be0f0fe089820f78520fe843d8117b2c58316905b36",
+    "cid": "",
+    "ts": 1761830374
+  }
