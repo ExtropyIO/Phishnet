@@ -6,6 +6,7 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+keypair.txt
 
 # Python
 __pycache__/

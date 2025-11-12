@@ -1,34 +1,132 @@
 import os
+import sys
 import hashlib
 from datetime import datetime
 from uagents import Agent, Context
+import asyncio
 
 from schema import SignedReport, ChatMessage, ChatResponse, LogResponse
+
+# Import real Solana blockchain writer
+try:
+    from agent_mvp import DirectSolanaAuditClient
+    SOLANA_AVAILABLE = True
+except ImportError:
+    SOLANA_AVAILABLE = False
+
+TESTNET_RPC = "https://api.devnet.solana.com"
 
 agent = Agent(
          name="OnchainAgent",
          seed="onchain-agent-seed"
      )
 
-def simulate_blockchain_write(report_hash: str, verdict: str) -> LogResponse:
-    """Simulate writing report hash to blockchain and return transaction details"""
-    # Generate a simulated transaction signature (in production this would be real)
-    tx_data = f"{report_hash}:{verdict}:{datetime.utcnow().isoformat()}"
-    tx_signature = hashlib.sha256(tx_data.encode()).hexdigest()
+def get_validated_rpc() -> tuple[str, str]:
+    rpc_url = TESTNET_RPC
+    cluster = "devnet"
     
-    # Simulate Solana explorer URL (could also be EVM)
-    explorer_url = f"https://explorer.solana.com/tx/{tx_signature}?cluster=devnet"
+    return rpc_url, cluster
+
+def verdict_to_int(verdict_str: str) -> int:
+    """Convert verdict string to integer for blockchain storage"""
+    verdict_map = {
+        "safe": 0,
+        "suspicious": 1,
+        "malicious": 2,
+        "error": 2  # Treat errors as malicious for safety
+    }
+    return verdict_map.get(verdict_str.lower(), 1)
+
+async def write_to_blockchain(msg: SignedReport) -> LogResponse:
+    """Write verified report to Solana blockchain via SPL Memo program"""
     
-    return LogResponse(
-        tx_signature=tx_signature,
-        explorer_url=explorer_url,
-        block_height=None,  # Would be populated in real implementation
-        confirmed=True
-    )
+    if not SOLANA_AVAILABLE:
+        raise RuntimeError(
+            "Solana blockchain integration not available. "
+        )
+    
+    # Get RPC and cluster info
+    rpc_url, cluster = get_validated_rpc()
+    
+    # Extract URL from evidence if available
+    url = "unknown"
+    if isinstance(msg.evidence, dict):
+        if "url" in msg.evidence:
+            url = msg.evidence["url"]
+        elif "transaction" in msg.evidence and isinstance(msg.evidence["transaction"], dict):
+            tx_sig = msg.evidence["transaction"].get("signature", "")
+            if tx_sig:
+                url = f"solana_tx:{tx_sig}"
+            else:
+                # Fallback: use from/to addresses
+                from_addr = msg.evidence["transaction"].get("from_address", "")
+                to_addr = msg.evidence["transaction"].get("to_address", "")
+                if from_addr and to_addr:
+                    url = f"solana_tx:{from_addr}->{to_addr}"
+                else:
+                    url = "solana_transaction"
+    
+    verdict_int = verdict_to_int(msg.verdict)
+    
+    # Build attestation data from referee verification
+    attestation = {}
+    if isinstance(msg.evidence, dict) and 'referee_verification' in msg.evidence:
+        attestation = {
+            "quote": msg.signature,
+            "referee_status": msg.evidence['referee_verification']['status'],
+            "verified_by": msg.evidence['referee_verification']['verified_by'],
+            "signature_valid": msg.evidence['referee_verification'].get('signature_valid', False)
+        }
+    else:
+        # Fallback if no referee verification
+        attestation = {"quote": msg.signature}
+    
+    try:
+        # Create client with explicit RPC
+        client = DirectSolanaAuditClient(rpc_url=rpc_url)
+        
+        # Run the sync submit_scan in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: client.submit_scan(
+                url=url,
+                verdict=verdict_int,
+                attestation=attestation,
+                scan_id=msg.ticket_id,
+                metadata={"report_hash": msg.report_hash, "attestation": msg.attestation}
+            )
+        )
+        
+        # Convert to LogResponse format
+        tx_sig = result["txSignature"]
+        
+        return LogResponse(
+            tx_signature=tx_sig,
+            explorer_url=f"https://explorer.solana.com/tx/{tx_sig}?cluster={cluster}",
+            block_height=None,
+            confirmed=True
+        )
+    
+    except Exception as exc:
+        raise RuntimeError(f"Blockchain write failed: {exc}") from exc
 
 @agent.on_event("startup")
 async def startup(ctx: Context):
-    ctx.logger.info("OnchainAgent ready - will record verified reports on-chain")
+    
+    # Check if Solana integration is available
+    if SOLANA_AVAILABLE:
+        ctx.logger.info("Solana blockchain integration ENABLED")
+        
+        # Get validated RPC
+        rpc_url, cluster = get_validated_rpc()
+        
+        # Display network configuration
+        ctx.logger.info(f"RPC Endpoint: {rpc_url}")
+        ctx.logger.info(f"Network: {cluster.upper()}")
+
+    else:
+        ctx.logger.error("Solana integration NOT available")
 
 @agent.on_message(model=SignedReport)
 async def handle_report(ctx: Context, sender: str, msg: SignedReport):
@@ -43,11 +141,16 @@ async def handle_report(ctx: Context, sender: str, msg: SignedReport):
     if is_verified:
         ctx.logger.info(f"Recording VERIFIED report {msg.report_hash} on-chain...")
         
-        # Simulate blockchain write (in production: call actual blockchain API)
-        log_response = simulate_blockchain_write(msg.report_hash, msg.verdict)
-        
-        ctx.logger.info(f"✓ Report recorded on-chain: {log_response.tx_signature}")
-        ctx.logger.info(f"Explorer URL: {log_response.explorer_url}")
+        try:
+            # Write to real Solana blockchain
+            log_response = await write_to_blockchain(msg)
+            
+            ctx.logger.info(f"Report recorded on blockchain: {log_response.tx_signature}")
+            ctx.logger.info(f"Explorer URL: {log_response.explorer_url}")
+            
+        except Exception as exc:
+            ctx.logger.error(f"Blockchain recording FAILED: {exc}")
+            return
         
         # If we have the original chat_sender, send blockchain confirmation directly to user
         if chat_sender:
