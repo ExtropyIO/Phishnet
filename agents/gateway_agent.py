@@ -11,21 +11,14 @@ from uagents_core.contrib.protocols.chat import (
 )
 from uagents import Protocol
 
-GATEWAY_PORT = int(os.getenv("GATEWAY_AGENT_PORT", "8007"))
-GATEWAY_ENDPOINT = os.getenv(
-    "GATEWAY_AGENT_ENDPOINT",
-    f"http://127.0.0.1:{GATEWAY_PORT}/submit"
-)
-INTAKE_AGENT_ADDRESS = os.getenv(
-    "INTAKE_AGENT_ADDRESS",
-    "agent1qtvyywwfn79saexjcd0hvp347ymdutp37xjhd6qcnuu0lruvypta69ctw45"
-)
+GATEWAY_PORT = int("8007")
+
+INTAKE_AGENT_ADDRESS = "agent1qtvyywwfn79saexjcd0hvp347ymdutp37xjhd6qcnuu0lruvypta69ctw45"
 
 gateway_agent = Agent(
     name="HttpGateway",
     seed="gateway-agent-seed",
     port=GATEWAY_PORT,
-    endpoint=GATEWAY_ENDPOINT,
 )
 
 class SubmitRequest(Model):
@@ -88,8 +81,6 @@ async def handle_submit(ctx: Context, req: SubmitRequest) -> SubmitResponse:
 async def startup(ctx: Context):
     ctx.logger.info("HttpGateway agent started")
     ctx.logger.info(f"Agent address: {gateway_agent.address}")
-    ctx.logger.info(f"HTTP endpoint: {GATEWAY_ENDPOINT}")
-    ctx.logger.info(f"IntakeAgent address: {INTAKE_AGENT_ADDRESS}")
 
 @gateway_agent.on_message(model=CPChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: CPChatMessage):
@@ -98,5 +89,4 @@ async def handle_chat_message(ctx: Context, sender: str, msg: CPChatMessage):
 gateway_agent.include(chat_proto, publish_manifest=True)
 
 if __name__ == "__main__":
-    
     gateway_agent.run()
