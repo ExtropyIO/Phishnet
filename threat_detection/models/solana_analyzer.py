@@ -11,7 +11,7 @@ EMBEDDED_SOLANA_RULES_JSON = r"""[
     "type": "wallet",
     "description": "Malicious developer wallet detected in previous incidents",
     "severity": "critical"
-  },
+  }, 
   {
     "id": "malicious_dev_wallet_2",
     "address": "ESSfP3aAcW6Z59ozut9Jkqy9btaX5YTHt25b3Vhs2hsf",
