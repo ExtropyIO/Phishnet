@@ -18,6 +18,8 @@ from datetime import datetime
 from shared.health import start_health_server
 from url_analyzer import URLAnalyzer
 from solana_analyzer import SolanaAnalyzer
+from text_analyzer import TextAnalyzer
+from email_analyzer import EmailAnalyzer
 
 # Import MeTTa KG client
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
