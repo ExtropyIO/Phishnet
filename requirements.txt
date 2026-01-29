@@ -7,8 +7,19 @@ pydantic>=2.12.0
 aiohttp>=3.8.0
 requests>=2.31.0
 
-# URL analysis dependencies
+# URL/ email analysis analysis dependencies(Punycode/IDN handling)
 idna>=3.4
+
+# Email parsing (for email_analyzer_enhanced.py)
+# Note: email.utils is part of Python stdlib, but adding these for robustness
+python-dateutil>=2.8.0  # Better date parsing for email headers
+
+# Additional testing tools (recommended)
+pytest-cov>=4.1.0  # Code coverage
+pytest-mock>=3.11.0  # Mocking support
+
+# Type checking (highly recommended for production)
+mypy>=1.3.0 
 
 # Development and testing
 pytest>=7.4.0
