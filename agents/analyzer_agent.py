@@ -10,7 +10,7 @@ from typing import Dict, Any
 from uagents import Agent, Context, Protocol, Model
 from uagents.protocols.query import QueryProtocol
 
-from uagents import Agent, Context
+from uagents import Agent, Context, protocol, model
 
 # Import analyzers
 # Import URL analyzer (now uses absolute paths internally)
