@@ -81,6 +81,17 @@ class AnalyzerAgentCore:
                 fact_type = "solana_tx_analysis"
                 fact_value = artifact.solana_tx.dict()
 
+                   
+            elif artifact.type == ArtifactType.TEXT:
+                result = self._analyze_text(artifact)
+                fact_type = "text_analysis"
+                fact_value = artifact.content
+                
+            elif artifact.type == ArtifactType.EMAIL:
+                result = self._analyze_email(artifact)
+                fact_type = "email_analysis"
+                fact_value = artifact.content
+
             else:
                 raise Exception(f"Unsupported artifact type: {artifact.type}")
 
